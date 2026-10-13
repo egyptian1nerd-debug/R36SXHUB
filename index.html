@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>R36SX Hub</title>
+<style>
+  :root { --sky: #87ceeb; --white: #ffffff; --ink: #12324a; --ease: cubic-bezier(.32,.72,0,1); }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    font-family: system-ui, sans-serif; color: var(--ink);
+    background: linear-gradient(180deg, var(--sky) 0%, var(--white) 100%) no-repeat;
+    transition: background .6s ease;
+  }
+
+  /* Screens: only one is visible. The other waits slightly zoomed and blurred. */
+  .view {
+    position: absolute; inset: 0; overflow: auto; padding: 32px 20px 100px;
+    transition: opacity .55s var(--ease), transform .55s var(--ease), filter .55s var(--ease);
+  }
+  #themesView { transform-origin: center; }
+  #themesView.off { opacity: 0; transform: scale(1.12); filter: blur(10px); pointer-events: none; }
+  #homeView.off   { opacity: 0; transform: scale(.9);   filter: blur(10px); pointer-events: none; }
+  .inner { max-width: 720px; margin: 0 auto; }
+
+  h1 { font-size: 2.2rem; margin: 0 0 4px; }
+  p.sub { margin: 0 0 28px; opacity: .8; }
+
+  .stage { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .device { width: 230px; padding: 16px; border-radius: 22px; background: #2b3a47; box-shadow: 0 10px 24px rgba(18,50,74,.25); }
+  .screen { height: 150px; border-radius: 8px; background: linear-gradient(180deg, var(--sky), var(--white)); display: flex; align-items: center; justify-content: center; font-weight: 600; transition: background .6s ease; }
+  .buttons { display: flex; justify-content: space-between; margin-top: 18px; }
+  .dpad { width: 44px; height: 44px; position: relative; }
+  .dpad::before, .dpad::after { content: ""; position: absolute; background: #0f1a23; border-radius: 3px; }
+  .dpad::before { left: 15px; top: 0; width: 14px; height: 44px; }
+  .dpad::after { top: 15px; left: 0; height: 14px; width: 44px; }
+  .abxy { display: grid; grid-template-columns: repeat(2, 18px); gap: 6px; }
+  .abxy i { width: 18px; height: 18px; border-radius: 50%; background: #0f1a23; display: block; }
+
+  .themes { flex: 1; min-width: 240px; }
+  .themes h2 { margin: 0 0 12px; font-size: 1.1rem; }
+  .theme { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 12px; border: 2px solid transparent; background: rgba(255,255,255,.7); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .theme:hover { background: #fff; }
+  .theme.active { border-color: var(--ink); background: #fff; }
+  .swatch { width: 44px; height: 44px; border-radius: 8px; flex: none; }
+  .theme small { display: block; opacity: .7; }
+
+  /* Confirm button, bottom right */
+  #confirm {
+    position: fixed; right: 20px; bottom: 20px; z-index: 5;
+    padding: 14px 24px; border: 0; border-radius: 999px;
+    background: var(--ink); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+    box-shadow: 0 8px 20px rgba(18,50,74,.3);
+    transition: opacity .4s var(--ease), transform .4s var(--ease);
+  }
+  #confirm:active { transform: scale(.96); }
+  #confirm.gone { opacity: 0; transform: translateY(12px); pointer-events: none; }
+
+  /* Main screen: three 48px squares */
+  .home { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; gap: 28px; }
+  .home h1 { margin: 0; text-align: center; }
+  .home .sub { margin: 4px 0 0; text-align: center; }
+  .dash { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .cards { display: flex; flex-direction: column; gap: 12px; width: 260px; }
+  .card { padding: 14px 16px; border-radius: 18px; background: rgba(255,255,255,.55); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.7); }
+  .card small { display: block; opacity: .65; font-size: 12px; }
+  .card b { font-weight: 600; font-size: 1rem; }
+  .apps { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; padding: 22px 30px; border-radius: 32px; background: rgba(255,255,255,.45); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.7); }
+  .app { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .tile { width: 104px; height: 104px; border-radius: 26px; display: grid; place-items: center; box-shadow: 0 8px 18px rgba(18,50,74,.28); transition: transform .25s var(--ease); }
+  .app:hover .tile { transform: scale(1.08); }
+  .app:active .tile { transform: scale(.92); }
+  .app:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; border-radius: 12px; }
+  .tile svg { width: 56px; height: 56px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .app span { font-size: 14px; font-weight: 500; }
+  #toast { margin-top: 28px; font-size: .9rem; min-height: 1.2em; opacity: .8; }
+
+
+  #filesView.off { opacity: 0; transform: scale(.9); filter: blur(10px); pointer-events: none; }
+  .fbtop { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .fbtop h1 { font-size: 1.8rem; margin: 0; }
+  .pill { display: inline-block; padding: 10px 18px; border-radius: 999px; border: 1px solid rgba(18,50,74,.25); background: rgba(255,255,255,.7); font: inherit; color: inherit; cursor: pointer; }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill:disabled { opacity: .4; cursor: default; }
+  .fbbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; word-break: break-all; }
+  .fbactions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .list { padding: 6px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; }
+  .row:hover { background: rgba(255,255,255,.6); }
+  .rowmain { flex: 1; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; min-width: 0; }
+  .rowmain.dir { cursor: pointer; }
+  .rowmain svg { width: 24px; height: 24px; flex: none; fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sz { opacity: .6; font-size: 13px; }
+  .mini { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(18,50,74,.25); background: rgba(255,255,255,.7); color: inherit; cursor: pointer; }
+  .mini.del { color: #a32d2d; }
+  .empty { padding: 16px; opacity: .7; text-align: center; }
+  .note { font-size: .9rem; opacity: .8; margin-top: 16px; }
+
+
+  #installView.off { opacity: 0; transform: scale(.9); filter: blur(10px); pointer-events: none; }
+  .step { margin-bottom: 14px; }
+  .step h2 { margin: 0 0 10px; font-size: 1.1rem; display: flex; align-items: center; gap: 10px; }
+  .step p { margin: 10px 0; }
+  .num { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-size: 13px; flex: none; }
+  .seg { display: inline-flex; border-radius: 999px; border: 1px solid rgba(18,50,74,.25); overflow: hidden; }
+  .seg button { padding: 9px 16px; border: 0; background: rgba(255,255,255,.7); font: inherit; color: inherit; cursor: pointer; }
+  .seg button.active { background: var(--ink); color: #fff; }
+  a.pill { text-decoration: none; color: inherit; }
+  a.pill.dark { color: #fff; }
+  .drop { display: block; margin-top: 12px; padding: 22px; text-align: center; border: 2px dashed rgba(18,50,74,.35); border-radius: 16px; cursor: pointer; }
+  .drop.over { background: rgba(255,255,255,.7); }
+  .chk { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; font-size: .95rem; }
+  .bar { height: 10px; border-radius: 999px; background: rgba(18,50,74,.15); overflow: hidden; margin-top: 14px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
+
+  @media (prefers-reduced-motion: reduce) { .view, #confirm, .tile, body { transition: none; } }
+</style>
+</head>
+<body>
+
+<section class="view" id="themesView">
+  <div class="inner">
+    <h1>R36SX Hub</h1>
+    <p class="sub">Pick a theme, then confirm.</p>
+    <div class="stage">
+      <div class="device" aria-label="R36SX preview">
+        <div class="screen">Main menu</div>
+        <div class="buttons"><div class="dpad"></div><div class="abxy"><i></i><i></i><i></i><i></i></div></div>
+      </div>
+      <div class="themes" id="themes"><h2>Themes</h2></div>
+    </div>
+  </div>
+</section>
+
+<section class="view off" id="homeView" inert>
+  <div class="home">
+    <div>
+      <h1>R36SX Hub</h1>
+      <p class="sub">Welcome back</p>
+    </div>
+    <div class="dash">
+      <div class="device" aria-label="R36SX preview">
+        <div class="screen">Main menu</div>
+        <div class="buttons"><div class="dpad"></div><div class="abxy"><i></i><i></i><i></i><i></i></div></div>
+      </div>
+      <div class="cards">
+        <div class="card"><small>Current theme</small><b id="current">Sky on white</b></div>
+        <div class="card"><small>Space left on SD card</small><b id="space">-- GB</b></div>
+        <div class="card"><small>SD card</small><b id="sdstatus">Not connected</b></div>
+      </div>
+    </div>
+    <div class="apps">
+      <button class="app" data-go="files">
+        <div class="tile" style="background:#f0a020">
+          <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        </div>
+        <span>File browser</span>
+      </button>
+      <button class="app" data-go="frogui">
+        <div class="tile" style="background:#2fa84f">
+          <svg viewBox="0 0 24 24"><path d="M12 4v10m0 0-4-4m4 4 4-4M5 19h14"/></svg>
+        </div>
+        <span>FrogUI installer</span>
+      </button>
+      <button class="app" data-go="themes">
+        <div class="tile" style="background:#7a5af0">
+          <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-1 1.5-2.2-.5-1.2.2-2.3 1.5-2.3H17a4 4 0 0 0 4-4c0-5-4-9.5-9-9.5z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></svg>
+        </div>
+        <span>Themes</span>
+      </button>
+    </div>
+    <div id="toast"></div>
+  </div>
+</section>
+
+<section class="view off" id="filesView" inert>
+  <div class="inner">
+    <div class="fbtop">
+      <button class="pill" id="fbHome">Home</button>
+      <h1>File browser</h1>
+    </div>
+    <div class="card" id="fbConnect">
+      <p style="margin-top:0">Choose your SD card to start. Works in Chrome or Edge on a PC.</p>
+      <button class="pill dark" id="fbConnectBtn">Connect SD card</button>
+    </div>
+    <div id="fbTools" hidden>
+      <div class="card fbbar">
+        <button class="pill" id="fbBack">Up</button>
+        <span id="fbPath"></span>
+      </div>
+      <div class="fbactions">
+        <label class="pill dark">Upload files<input type="file" id="fbUpload" multiple hidden></label>
+        <button class="pill" id="fbNew">New folder</button>
+        <select id="cardSize" class="pill" aria-label="SD card size">
+          <option value="8">8 GB</option><option value="16">16 GB</option>
+          <option value="32">32 GB</option><option value="64" selected>64 GB</option>
+          <option value="128">128 GB</option><option value="256">256 GB</option>
+          <option value="512">512 GB</option>
+        </select>
+        <button class="pill" id="fbSpace">Check space left</button>
+      </div>
+      <div class="card list" id="fbList"></div>
+    </div>
+    <p class="note" id="fbMsg"></p>
+  </div>
+</section>
+
+<section class="view off" id="installView" inert>
+  <div class="inner">
+    <div class="fbtop">
+      <button class="pill" id="inHome">Home</button>
+      <h1>FrogUI installer</h1>
+    </div>
+
+    <div class="card step">
+      <h2><span class="num">1</span>Your device and stock backup</h2>
+      <div class="seg" id="devSeg">
+        <button class="active" data-dev="v26">R36SX v2.6</button>
+        <button data-dev="v27">R36SX v2.7</button>
+      </div>
+      <p>TreeFrogUI must go on a freshly formatted FAT32 card restored from the matching stock backup. Installing over the factory card causes missing audio, broken controls and boot failures.</p>
+      <a class="pill dark" id="stockLink" target="_blank" rel="noopener" href="#">Get the stock backup</a>
+    </div>
+
+    <div class="card step">
+      <h2><span class="num">2</span>TreeFrogUI version</h2>
+      <select id="verSel" class="pill" aria-label="TreeFrogUI version"><option>Loading...</option></select>
+      <a class="pill" id="verLink" target="_blank" rel="noopener" href="https://github.com/tzubertowski/TreeFrogUI/releases/latest">Open download page</a>
+      <p>Download the full <code>TreeFrogUI_version.zip</code> from that page (or <code>update.zip</code> to update), then drop it here.</p>
+      <label class="drop" id="drop">Drop the zip here or click to choose<input type="file" id="zipIn" accept=".zip" hidden></label>
+      <p class="note" id="zipInfo"></p>
+    </div>
+
+    <div class="card step">
+      <h2><span class="num">3</span>Install</h2>
+      <button class="pill" id="inConnect">Connect SD card</button>
+      <span id="inSd">Not connected</span>
+      <label class="chk"><input type="checkbox" id="chk1"> My card was formatted and restored from the stock backup in step 1</label>
+      <label class="chk"><input type="checkbox" id="chk2"> I picked the right device</label>
+      <button class="pill dark" id="installBtn" disabled>Install</button>
+      <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+      <p class="note" id="inMsg"></p>
+    </div>
+  </div>
+</section>
+
+<button id="confirm">Confirm theme</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+  const themes = [
+    { name: "Sky on white", note: "Default",       top: "#87ceeb", bottom: "#ffffff" },
+    { name: "Sunset",       note: "Gradient",      top: "#ff8a5c", bottom: "#fff3c4" },
+    { name: "Mint",         note: "Gradient",      top: "#7fe0b8", bottom: "#ffffff" },
+    { name: "Night",        note: "Dark gradient", top: "#1b2a49", bottom: "#6d83b8" }
+  ];
+  let chosen = themes[0];
+
+  const root = document.documentElement;
+  const list = document.getElementById("themes");
+  const themesView = document.getElementById("themesView");
+  const homeView = document.getElementById("homeView");
+  const confirmBtn = document.getElementById("confirm");
+  const toast = document.getElementById("toast");
+
+  function pick(t, btn) {
+    chosen = t;
+    root.style.setProperty("--sky", t.top);
+    root.style.setProperty("--white", t.bottom);
+    document.querySelectorAll(".theme").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  }
+
+  themes.forEach((t, i) => {
+    const b = document.createElement("button");
+    b.className = "theme" + (i === 0 ? " active" : "");
+    b.innerHTML = '<span class="swatch" style="background:linear-gradient(180deg,' + t.top + ',' + t.bottom + ')"></span><span>' + t.name + '<small>' + t.note + '</small></span>';
+    b.addEventListener("click", () => pick(t, b));
+    list.appendChild(b);
+  });
+
+  const filesView = document.getElementById("filesView");
+  const views = { themes: themesView, home: homeView, files: filesView, installer: document.getElementById("installView") };
+
+  function show(which) {
+    for (const [k, v] of Object.entries(views)) {
+      v.classList.toggle("off", k !== which);
+      v.inert = k !== which;
+    }
+    confirmBtn.classList.toggle("gone", which !== "themes");
+    if (which === "home") document.getElementById("current").textContent = chosen.name;
+    toast.textContent = "";
+  }
+
+  confirmBtn.addEventListener("click", () => show("home"));
+
+  document.querySelectorAll(".app").forEach(a => a.addEventListener("click", () => {
+    if (a.dataset.go === "themes") show("themes");
+    else if (a.dataset.go === "files") show("files");
+    else if (a.dataset.go === "frogui") show("installer");
+    else toast.textContent = "Coming soon";
+  }));
+
+  /* ---------- File browser ---------- */
+  const supported = "showDirectoryPicker" in window;
+  const fbList = document.getElementById("fbList");
+  const fbPath = document.getElementById("fbPath");
+  const fbMsg = document.getElementById("fbMsg");
+  const fbBack = document.getElementById("fbBack");
+  let rootHandle = null;
+  let stack = [];
+  const cur = () => stack[stack.length - 1];
+  const msg = t => { fbMsg.textContent = t; };
+
+  function fmt(n) {
+    if (n < 1000) return n + " B";
+    const u = ["KB", "MB", "GB", "TB"]; let i = -1;
+    do { n /= 1000; i++; } while (n >= 1000 && i < 3);
+    return n.toFixed(n < 10 ? 1 : 0) + " " + u[i];
+  }
+
+  const FOLDER = '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+  const FILE = '<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>';
+
+  async function connect() {
+    if (!supported) { msg("This browser can't open folders. Use Chrome or Edge on a PC."); return; }
+    try { rootHandle = await window.showDirectoryPicker({ mode: "readwrite" }); }
+    catch (e) { return; }
+    stack = [{ name: rootHandle.name || "SD card", handle: rootHandle }];
+    document.getElementById("sdstatus").textContent = "Connected";
+    document.getElementById("fbConnect").hidden = true;
+    document.getElementById("fbTools").hidden = false;
+    msg("");
+    refreshInstaller();
+    render();
+  }
+
+  async function render() {
+    fbPath.textContent = stack.map(s => s.name).join(" / ");
+    fbBack.disabled = stack.length < 2;
+    fbList.textContent = "";
+    const items = [];
+    try { for await (const [name, h] of cur().handle.entries()) items.push({ name, h }); }
+    catch (e) { msg("Could not read this folder: " + e.message); return; }
+    items.sort((a, b) => a.h.kind === b.h.kind ? a.name.localeCompare(b.name) : (a.h.kind === "directory" ? -1 : 1));
+    if (!items.length) {
+      const d = document.createElement("div");
+      d.className = "empty"; d.textContent = "This folder is empty. Upload files to add some.";
+      fbList.appendChild(d); return;
+    }
+    items.forEach(it => fbList.appendChild(row(it)));
+  }
+
+  function row(it) {
+    const isDir = it.h.kind === "directory";
+    const r = document.createElement("div"); r.className = "row";
+    const main = document.createElement("button");
+    main.className = "rowmain" + (isDir ? " dir" : "");
+    main.innerHTML = (isDir ? FOLDER : FILE) + '<span class="nm"></span><span class="sz"></span>';
+    main.querySelector(".nm").textContent = it.name;
+    const sz = main.querySelector(".sz");
+    if (isDir) {
+      sz.textContent = "Folder";
+      main.addEventListener("click", () => { stack.push({ name: it.name, handle: it.h }); render(); });
+    } else {
+      it.h.getFile().then(f => { sz.textContent = fmt(f.size); }).catch(() => {});
+    }
+    r.appendChild(main);
+    if (!isDir) {
+      const dl = document.createElement("button");
+      dl.className = "mini"; dl.textContent = "Download";
+      dl.addEventListener("click", () => download(it.h));
+      r.appendChild(dl);
+    }
+    const del = document.createElement("button");
+    del.className = "mini del"; del.textContent = "Delete";
+    del.addEventListener("click", () => remove(it.name, isDir));
+    r.appendChild(del);
+    return r;
+  }
+
+  async function download(fh) {
+    const f = await fh.getFile();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function remove(name, isDir) {
+    if (!confirm('Delete "' + name + '"' + (isDir ? " and everything inside it" : "") + "?\nThis can't be undone.")) return;
+    try { await cur().handle.removeEntry(name, { recursive: isDir }); msg('Deleted "' + name + '".'); render(); }
+    catch (e) { msg("Could not delete: " + e.message); }
+  }
+
+  async function newFolder() {
+    const name = prompt("Folder name");
+    if (!name) return;
+    try { await cur().handle.getDirectoryHandle(name, { create: true }); render(); }
+    catch (e) { msg("Could not create folder: " + e.message); }
+  }
+
+  async function upload(files) {
+    let n = 0;
+    for (const f of files) {
+      let exists = true;
+      try { await cur().handle.getFileHandle(f.name); } catch (e) { exists = false; }
+      if (exists && !confirm('"' + f.name + '" already exists. Replace it?')) continue;
+      try {
+        const fh = await cur().handle.getFileHandle(f.name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(f); await w.close();
+        n++; msg("Uploaded " + n + " of " + files.length + "...");
+      } catch (e) { msg("Could not write " + f.name + ": " + e.message); return; }
+    }
+    msg("Uploaded " + n + " file(s)."); render();
+  }
+
+  async function scan(dir, t) {
+    for await (const [, h] of dir.entries()) {
+      if (h.kind === "directory") await scan(h, t);
+      else { t.bytes += (await h.getFile()).size; t.files++; if (t.files % 50 === 0) msg("Scanning... " + t.files + " files"); }
+    }
+  }
+
+  async function checkSpace() {
+    const total = Number(document.getElementById("cardSize").value) * 1e9;
+    const t = { bytes: 0, files: 0 };
+    msg("Scanning...");
+    try { await scan(rootHandle, t); } catch (e) { msg("Scan failed: " + e.message); return; }
+    document.getElementById("space").textContent = fmt(Math.max(0, total - t.bytes));
+    msg("Used " + fmt(t.bytes) + " in " + t.files + " files. Free space is an estimate from the card size you picked.");
+  }
+
+  document.getElementById("fbConnectBtn").addEventListener("click", connect);
+  document.getElementById("fbHome").addEventListener("click", () => show("home"));
+  fbBack.addEventListener("click", () => { if (stack.length > 1) { stack.pop(); render(); } });
+  document.getElementById("fbNew").addEventListener("click", newFolder);
+  document.getElementById("fbSpace").addEventListener("click", checkSpace);
+  document.getElementById("fbUpload").addEventListener("change", e => { const f = [...e.target.files]; e.target.value = ""; upload(f); });
+
+  /* ---------- FrogUI installer ---------- */
+  const DEVICES = {
+    v26: { backup: "https://drive.google.com/file/d/1xTCNNRKfQmFJr2Zkd1oCBRChuWiidIBD", folder: "install_first/r36sx/" },
+    v27: { backup: "https://drive.google.com/file/d/12G3CQAWkaRMWbrY_YmGH8nstGbs1hB-O", folder: "install_first/r36sx/" }
+  };
+  let curDev = "v26", releases = [], curZip = null, plan = null, busy = false;
+
+  const stockLink = document.getElementById("stockLink");
+  const verSel = document.getElementById("verSel");
+  const verLink = document.getElementById("verLink");
+  const zipInfo = document.getElementById("zipInfo");
+  const inSd = document.getElementById("inSd");
+  const inConnect = document.getElementById("inConnect");
+  const installBtn = document.getElementById("installBtn");
+  const chk1 = document.getElementById("chk1");
+  const chk2 = document.getElementById("chk2");
+  const bar = document.getElementById("bar");
+  const barFill = document.getElementById("barFill");
+  const inMsg = document.getElementById("inMsg");
+  const drop = document.getElementById("drop");
+  const zipIn = document.getElementById("zipIn");
+
+  function refreshInstaller() {
+    const connected = !!rootHandle;
+    inSd.textContent = connected ? "Connected: " + (rootHandle.name || "SD card") : "Not connected";
+    inConnect.hidden = connected;
+    installBtn.disabled = !(connected && plan && chk1.checked && chk2.checked && !busy);
+  }
+
+  function setDevice(d) {
+    curDev = d;
+    stockLink.href = DEVICES[d].backup;
+    document.querySelectorAll("#devSeg button").forEach(b => b.classList.toggle("active", b.dataset.dev === d));
+    analyze();
+  }
+  document.querySelectorAll("#devSeg button").forEach(b => b.addEventListener("click", () => setDevice(b.dataset.dev)));
+  stockLink.href = DEVICES[curDev].backup;
+
+  async function loadVersions() {
+    try {
+      const r = await fetch("https://api.github.com/repos/tzubertowski/TreeFrogUI/releases?per_page=12");
+      if (!r.ok) throw new Error("bad response");
+      releases = await r.json();
+    } catch (e) { releases = []; }
+    verSel.textContent = "";
+    if (!releases.length) {
+      const o = document.createElement("option"); o.textContent = "Latest release"; verSel.appendChild(o);
+      return;
+    }
+    releases.forEach((rel, i) => {
+      const o = document.createElement("option");
+      o.value = i; o.textContent = rel.tag_name + (i === 0 ? " (latest)" : "") + (rel.prerelease ? " (pre-release)" : "");
+      verSel.appendChild(o);
+    });
+    verLink.href = releases[0].html_url;
+  }
+  verSel.addEventListener("change", () => { const r = releases[Number(verSel.value)]; if (r) verLink.href = r.html_url; });
+  loadVersions();
+
+  async function loadZip(file) {
+    plan = null; curZip = null; zipInfo.textContent = "";
+    if (!file) { refreshInstaller(); return; }
+    if (/^update\.zip$/i.test(file.name)) {
+      plan = { mode: "update", file };
+      zipInfo.textContent = "Update package. It gets copied to the card root and TreeFrogUI applies it on the next boot.";
+      refreshInstaller(); return;
+    }
+    if (!window.JSZip) { zipInfo.textContent = "Could not load the zip tool. Check your internet and reload the page."; refreshInstaller(); return; }
+    zipInfo.textContent = "Reading zip...";
+    try { curZip = await JSZip.loadAsync(file); }
+    catch (e) { zipInfo.textContent = "That file is not a readable zip."; refreshInstaller(); return; }
+    analyze();
+  }
+
+  function analyze() {
+    if (!curZip) return;
+    const hookDir = DEVICES[curDev].folder;
+    const names = Object.keys(curZip.files);
+    let prefix = null;
+    for (const n of names) {
+      const i = n.indexOf(hookDir);
+      if (i >= 0 && (i === 0 || n[i - 1] === "/")) { prefix = n.slice(0, i); break; }
+    }
+    if (prefix === null) {
+      plan = null;
+      zipInfo.textContent = "This is not a full TreeFrogUI install zip. Use TreeFrogUI_version.zip from the release, not update.zip.";
+      refreshInstaller(); return;
+    }
+    const items = [];
+    for (const n of names) {
+      const e = curZip.files[n];
+      if (e.dir || !n.startsWith(prefix)) continue;
+      const rel = n.slice(prefix.length);
+      if (rel.startsWith(hookDir)) { const d = rel.slice(hookDir.length); if (d) items.push({ e, dest: d, hook: true }); }
+      else if (/^(cubegm|frogui|roms|MD)\//i.test(rel)) items.push({ e, dest: rel, hook: false });
+    }
+    items.sort((a, b) => a.hook - b.hook);
+    plan = { mode: "full", items };
+    zipInfo.textContent = "Ready: " + items.length + " files to copy.";
+    refreshInstaller();
+  }
+
+  zipIn.addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; loadZip(f); });
+  ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => loadZip(e.dataTransfer.files[0]));
+  [chk1, chk2].forEach(c => c.addEventListener("change", refreshInstaller));
+  inConnect.addEventListener("click", connect);
+  document.getElementById("inHome").addEventListener("click", () => show("home"));
+
+  async function dirAt(base, path) {
+    let d = base;
+    for (const part of path.split("/").filter(Boolean)) d = await d.getDirectoryHandle(part, { create: true });
+    return d;
+  }
+  async function putBlob(dir, name, blob) {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(blob); await w.close();
+  }
+
+  async function install() {
+    if (!rootHandle || !plan) return;
+    busy = true; refreshInstaller();
+    bar.hidden = false; barFill.style.width = "0%"; inMsg.textContent = "";
+    try {
+      if (plan.mode === "update") {
+        await putBlob(rootHandle, "update.zip", plan.file);
+        barFill.style.width = "100%";
+        inMsg.textContent = "Copied update.zip to the card root. Eject the card safely and boot the device to apply it.";
+      } else {
+        const d = new Date(), p = x => String(x).padStart(2, "0");
+        const stamp = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
+        let bkRoot = null, backed = 0, skipped = 0;
+        const total = plan.items.length;
+        for (let i = 0; i < total; i++) {
+          const it = plan.items[i];
+          const parts = it.dest.split("/"); const name = parts.pop(); const folder = parts.join("/");
+          const dir = await dirAt(rootHandle, folder);
+          let old = null;
+          try { old = await (await dir.getFileHandle(name)).getFile(); } catch (e) {}
+          if (old && /^roms\//i.test(it.dest)) { skipped++; }
+          else {
+            if (old) {
+              if (!bkRoot) bkRoot = await dirAt(rootHandle, "r36sxhub-backup-" + stamp);
+              await putBlob(await dirAt(bkRoot, folder), name, old);
+              backed++;
+            }
+            await putBlob(dir, name, await it.e.async("blob"));
+          }
+          barFill.style.width = Math.round(((i + 1) / total) * 100) + "%";
+          inMsg.textContent = "Copying " + (i + 1) + " of " + total + "...";
+        }
+        inMsg.textContent = "Done. " + (total - skipped) + " files copied" +
+          (backed ? ", " + backed + " replaced files saved in r36sxhub-backup-" + stamp : "") +
+          (skipped ? ", " + skipped + " existing ROM files left alone" : "") +
+          ". Eject the card safely, put it in the device and power on. If you get a black screen, redo step 1 with the right backup.";
+      }
+      if (stack.length) render();
+    } catch (e) {
+      inMsg.textContent = "Install stopped: " + e.message + ". Running it again is safe.";
+    }
+    busy = false; refreshInstaller();
+  }
+  installBtn.addEventListener("click", install);
+</script>
+</body>
+</html>
