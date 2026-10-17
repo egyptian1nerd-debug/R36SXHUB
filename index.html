@@ -115,6 +115,16 @@
   .bar { height: 10px; border-radius: 999px; background: rgba(18,50,74,.15); overflow: hidden; margin-top: 14px; }
   .bar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
 
+  .steps-list { margin: 8px 0; padding-left: 20px; }
+  .warn { padding: 10px 12px; border-radius: 12px; background: rgba(255,200,80,.35); }
+  .note a { color: inherit; }
+  .chip { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.6); font-size: 13px; word-break: break-all; }
+  .typed { display: block; margin-top: 8px; width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(18,50,74,.35); font: inherit; }
+  .drop small { opacity: .7; }
+  #scraperView.off { opacity: 0; transform: scale(.9); filter: blur(10px); pointer-events: none; }
+  details.card { margin-bottom: 14px; }
+  details.card summary { cursor: pointer; }
+  pre.code { max-height: 160px; overflow: auto; padding: 12px; border-radius: 12px; background: rgba(18,50,74,.9); color: #e8f3fb; font-size: 12px; white-space: pre; user-select: all; }
   @media (prefers-reduced-motion: reduce) { .view, #confirm, .tile, body { transition: none; } }
 </style>
 </head>
@@ -163,6 +173,12 @@
           <svg viewBox="0 0 24 24"><path d="M12 4v10m0 0-4-4m4 4 4-4M5 19h14"/></svg>
         </div>
         <span>FrogUI installer</span>
+      </button>
+      <button class="app" data-go="scraper">
+        <div class="tile" style="background:#e0507a">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>
+        </div>
+        <span>Artwork scraper</span>
       </button>
       <button class="app" data-go="themes">
         <div class="tile" style="background:#7a5af0">
@@ -215,36 +231,189 @@
     </div>
 
     <div class="card step">
-      <h2><span class="num">1</span>Your device and stock backup</h2>
+      <h2><span class="num">1</span>Device</h2>
       <div class="seg" id="devSeg">
         <button class="active" data-dev="v26">R36SX v2.6</button>
         <button data-dev="v27">R36SX v2.7</button>
       </div>
-      <p>TreeFrogUI must go on a freshly formatted FAT32 card restored from the matching stock backup. Installing over the factory card causes missing audio, broken controls and boot failures.</p>
-      <a class="pill dark" id="stockLink" target="_blank" rel="noopener" href="#">Get the stock backup</a>
+      <p class="note" id="srcNote"></p>
     </div>
 
+    <details class="card" id="proxyBox">
+      <summary><b>Automatic downloads</b> (one-time setup, free)</summary>
+      <p>GitHub does not let web pages download its release files, so the page needs a tiny relay that you own. It takes about 3 minutes and you only do it once:</p>
+      <ol class="steps-list">
+        <li>Make a free account at <b>dash.cloudflare.com</b>, then open <b>Workers &amp; Pages</b> and create a new Worker (the button names may differ a little).</li>
+        <li>Open the code editor, delete everything in it, paste the code below, and press <b>Deploy</b>.</li>
+        <li>Copy the address it gives you (it ends in <b>.workers.dev</b>) and paste it here.</li>
+      </ol>
+      <pre class="code" id="proxyCode">// R36SX Hub relay: lets the hub page download GitHub release files.
+// It only forwards release downloads from the repos listed below.
+const ALLOWED = /^https:\/\/github\.com\/tzubertowski\/(TreeFrogUI|TreeFrogUI-installer|H\.OS_stock_backup|mini-scraper-cfw)\/releases\/download\//;
+const CORS = {
+  &quot;access-control-allow-origin&quot;: &quot;*&quot;,
+  &quot;access-control-allow-methods&quot;: &quot;GET, HEAD, OPTIONS&quot;,
+  &quot;access-control-allow-headers&quot;: &quot;range&quot;,
+  &quot;access-control-expose-headers&quot;: &quot;content-length, content-range&quot;
+};
+export default {
+  async fetch(request) {
+    if (request.method === &quot;OPTIONS&quot;) return new Response(null, { headers: CORS });
+    const target = new URL(request.url).searchParams.get(&quot;url&quot;) || &quot;&quot;;
+    if (!ALLOWED.test(target)) return new Response(&quot;Not allowed&quot;, { status: 403, headers: CORS });
+    const range = request.headers.get(&quot;range&quot;);
+    const upstream = await fetch(target, { redirect: &quot;follow&quot;, headers: range ? { range } : {} });
+    const headers = new Headers(upstream.headers);
+    for (const k in CORS) headers.set(k, CORS[k]);
+    return new Response(upstream.body, { status: upstream.status, headers });
+  }
+};
+</pre>
+      <button class="pill" id="copyProxy">Copy code</button>
+      <input id="proxyUrl" class="typed" placeholder="https://your-name.workers.dev" autocomplete="off">
+      <button class="pill dark" id="saveProxy" style="margin-top:8px">Save and test</button>
+      <p class="note" id="proxyMsg"></p>
+    </details>
+
+    <details class="card">
+      <summary><b>Or use files I downloaded myself</b></summary>
+      <div class="fbactions" style="margin-top:12px">
+        <a class="pill" id="stockLink" target="_blank" rel="noopener" href="#">Download stock backup</a>
+        <a class="pill" id="tfLink" target="_blank" rel="noopener" href="https://github.com/tzubertowski/TreeFrogUI/releases/latest">Download TreeFrogUI</a>
+      </div>
+      <label class="drop" id="drop">Drop both downloaded files here<br><small>or click to choose them</small><input type="file" id="fileIn" multiple hidden></label>
+      <div id="chips"></div>
+    </details>
+
     <div class="card step">
-      <h2><span class="num">2</span>TreeFrogUI version</h2>
-      <select id="verSel" class="pill" aria-label="TreeFrogUI version"><option>Loading...</option></select>
-      <a class="pill" id="verLink" target="_blank" rel="noopener" href="https://github.com/tzubertowski/TreeFrogUI/releases/latest">Open download page</a>
-      <p>Download the full <code>TreeFrogUI_version.zip</code> from that page (or <code>update.zip</code> to update), then drop it here.</p>
-      <label class="drop" id="drop">Drop the zip here or click to choose<input type="file" id="zipIn" accept=".zip" hidden></label>
-      <p class="note" id="zipInfo"></p>
+      <h2><span class="num">2</span>SD card</h2>
+      <button class="pill" id="inConnect">Choose SD card</button>
+      <span id="inSd">Not connected</span>
+      <div id="eraseBox" hidden>
+        <p class="warn" id="eraseWarn"></p>
+        <label class="chk"><input type="checkbox" id="chkFat"> The card is already formatted as FAT32</label>
+        <input id="typed" class="typed" autocomplete="off" hidden>
+      </div>
     </div>
 
     <div class="card step">
       <h2><span class="num">3</span>Install</h2>
-      <button class="pill" id="inConnect">Connect SD card</button>
-      <span id="inSd">Not connected</span>
-      <label class="chk"><input type="checkbox" id="chk1"> My card was formatted and restored from the stock backup in step 1</label>
-      <label class="chk"><input type="checkbox" id="chk2"> I picked the right device</label>
-      <button class="pill dark" id="installBtn" disabled>Install</button>
+      <button class="pill dark" id="installBtn" disabled>Erase card and install</button>
       <div class="bar" id="bar" hidden><i id="barFill"></i></div>
       <p class="note" id="inMsg"></p>
     </div>
   </div>
 </section>
+
+<section class="view off" id="scraperView" inert>
+  <div class="inner">
+    <div class="fbtop">
+      <button class="pill" id="scHome">Home</button>
+      <h1>Artwork scraper</h1>
+    </div>
+    <div class="card step">
+      <p style="margin-top:0">Mini Scraper adds box art to your ROMs for TreeFrogUI and other handheld frontends. It runs on your PC and reads and writes the SD card directly.</p>
+      <a class="pill dark" id="scDl" target="_blank" rel="noopener" href="https://github.com/tzubertowski/mini-scraper-cfw/releases/latest">Download Mini Scraper</a>
+      <p class="note" id="scInfo">Checking the latest version...</p>
+      <p class="note" id="scOthers"></p>
+      <ol class="steps-list">
+        <li>Unzip it and run <b>Mini Scraper</b>.</li>
+        <li>Keep the artwork source on <b>Automatic</b> (no account needed).</li>
+        <li>Choose your SD card, confirm it detected <b>TreeFrogUI</b>, then press <b>Add artwork</b>.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<script type="text/plain" id="szWorker">
+import SevenZip from "https://cdn.jsdelivr.net/npm/7z-wasm@1.2.0/7zz.es6.js";
+const BASE = "https://cdn.jsdelivr.net/npm/7z-wasm@1.2.0/";
+const LIMIT = 48 * 1024 * 1024;
+let sz = null, lines = [], pending = 0, wake = null;
+const send = (m, t) => self.postMessage(m, t || []);
+
+async function boot() {
+  if (sz) return;
+  sz = await SevenZip({ locateFile: f => BASE + f, print: l => lines.push(l), printErr: l => lines.push(l) });
+}
+async function openArchive(file) {
+  await boot();
+  try { sz.FS.unlink("/a.7z"); } catch (e) {}
+  const st = sz.FS.open("/a.7z", "w+");
+  const CH = 8 * 1024 * 1024;
+  for (let off = 0; off < file.size; off += CH) {
+    const buf = new Uint8Array(await file.slice(off, off + CH).arrayBuffer());
+    sz.FS.write(st, buf, 0, buf.length);
+    send({ t: "prog", text: "Reading backup... " + Math.round(Math.min(off + CH, file.size) / 1048576) + " MB" });
+  }
+  sz.FS.close(st);
+}
+function listArchive() {
+  lines = [];
+  sz.callMain(["l", "-slt", "-ba", "/a.7z"]);
+  const out = []; let cur = null, m;
+  for (const raw of lines) {
+    const l = raw.replace(/\x08/g, "");
+    if ((m = /Path = (.*)$/.exec(l))) { cur = { path: m[1], size: 0, dir: false }; out.push(cur); }
+    else if (cur && (m = /^Size = (\d+)/.exec(l))) cur.size = Number(m[1]);
+    else if (cur && (m = /^Attributes = (.*)/.exec(l))) cur.dir = m[1].charAt(0) === "D";
+  }
+  return out;
+}
+async function emit(dir, base) {
+  for (const n of sz.FS.readdir(dir)) {
+    if (n === "." || n === "..") continue;
+    const p = dir + "/" + n, rel = p.slice(base.length);
+    if (sz.FS.isDir(sz.FS.stat(p).mode)) {
+      send({ t: "dir", path: rel });
+      await emit(p, base);
+      sz.FS.rmdir(p);
+    } else {
+      const data = sz.FS.readFile(p);
+      sz.FS.unlink(p);
+      pending += data.length;
+      send({ t: "file", path: rel, data }, [data.buffer]);
+      while (pending > LIMIT) await new Promise(r => { wake = r; });
+    }
+  }
+}
+function rmEmpty(dir) {
+  for (const n of sz.FS.readdir(dir)) {
+    if (n === "." || n === "..") continue;
+    const p = dir + "/" + n;
+    if (sz.FS.isDir(sz.FS.stat(p).mode)) { rmEmpty(p); try { sz.FS.rmdir(p); } catch (e) {} }
+  }
+}
+async function extract(m) {
+  await boot();
+  send({ t: "prog", text: "Unpacking " + (m.label || "files") + "..." });
+  lines = [];
+  try { sz.FS.mkdir("/out"); } catch (e) {}
+  const args = ["x", "/a.7z", "-o/out", "-y"];
+  (m.include || []).forEach(p => args.push("-ir!" + p));
+  (m.exclude || []).forEach(p => args.push("-xr!" + p));
+  const code = sz.callMain(args);
+  if (typeof code === "number" && code >= 2) throw new Error("7-Zip failed: " + lines.slice(-3).join(" "));
+  const dir = ("/out/" + m.prefix).replace(/\/$/, "");
+  await emit(dir, dir + "/");
+  rmEmpty("/out");
+}
+self.onmessage = async (e) => {
+  const m = e.data;
+  try {
+    if (m.cmd === "ack") {
+      pending = Math.max(0, pending - m.bytes);
+      if (pending <= LIMIT && wake) { const w = wake; wake = null; w(); }
+      return;
+    }
+    if (m.cmd === "open") { await openArchive(m.file); send({ t: "done", id: m.id }); }
+    else if (m.cmd === "list") { await boot(); send({ t: "done", id: m.id, files: listArchive() }); }
+    else if (m.cmd === "extract") { await extract(m); send({ t: "done", id: m.id }); }
+  } catch (err) {
+    send({ t: "error", id: m.id, message: String((err && err.message) || err) });
+  }
+};
+</script>
 
 <button id="confirm">Confirm theme</button>
 
@@ -282,7 +451,7 @@
   });
 
   const filesView = document.getElementById("filesView");
-  const views = { themes: themesView, home: homeView, files: filesView, installer: document.getElementById("installView") };
+  const views = { themes: themesView, home: homeView, files: filesView, installer: document.getElementById("installView"), scraper: document.getElementById("scraperView") };
 
   function show(which) {
     for (const [k, v] of Object.entries(views)) {
@@ -300,6 +469,7 @@
     if (a.dataset.go === "themes") show("themes");
     else if (a.dataset.go === "files") show("files");
     else if (a.dataset.go === "frogui") show("installer");
+    else if (a.dataset.go === "scraper") show("scraper");
     else toast.textContent = "Coming soon";
   }));
 
@@ -333,7 +503,7 @@
     document.getElementById("fbConnect").hidden = true;
     document.getElementById("fbTools").hidden = false;
     msg("");
-    refreshInstaller();
+    onCard();
     render();
   }
 
@@ -440,171 +610,385 @@
   document.getElementById("fbSpace").addEventListener("click", checkSpace);
   document.getElementById("fbUpload").addEventListener("change", e => { const f = [...e.target.files]; e.target.value = ""; upload(f); });
 
-  /* ---------- FrogUI installer ---------- */
-  const DEVICES = {
-    v26: { backup: "https://drive.google.com/file/d/1xTCNNRKfQmFJr2Zkd1oCBRChuWiidIBD", folder: "install_first/r36sx/" },
-    v27: { backup: "https://drive.google.com/file/d/12G3CQAWkaRMWbrY_YmGH8nstGbs1hB-O", folder: "install_first/r36sx/" }
+
+  /* ---------- Installer engine (7-Zip worker, SD writer, downloads, install steps) ---------- */
+function makeSevenZ(createWorker) {
+  const w = createWorker();
+  let nextId = 1, cur = null, chain = Promise.resolve();
+  const fail = err => { if (cur) { const c = cur; cur = null; c.reject(err); } };
+  w.onmessage = e => {
+    const m = e.data;
+    if (m.t === "prog") { if (cur && cur.onText) cur.onText(m.text); return; }
+    chain = chain.then(async () => {
+      if (!cur) return;
+      if (m.t === "file" || m.t === "dir") {
+        await cur.onItem(m);
+        if (m.t === "file") w.postMessage({ cmd: "ack", bytes: m.data.length });
+      } else if (m.t === "done") { const c = cur; cur = null; c.resolve(m); }
+      else if (m.t === "error") fail(new Error(m.message));
+    }).catch(fail);
   };
-  let curDev = "v26", releases = [], curZip = null, plan = null, busy = false;
+  w.onerror = ev => fail(new Error(ev.message || "The 7-Zip worker crashed"));
+  return {
+    call(cmd, payload, onItem, onText) {
+      return new Promise((resolve, reject) => {
+        cur = { resolve, reject, onItem, onText };
+        w.postMessage(Object.assign({ cmd, id: nextId++ }, payload || {}));
+      });
+    },
+    stop() { w.terminate(); }
+  };
+}
 
-  const stockLink = document.getElementById("stockLink");
-  const verSel = document.getElementById("verSel");
-  const verLink = document.getElementById("verLink");
-  const zipInfo = document.getElementById("zipInfo");
-  const inSd = document.getElementById("inSd");
-  const inConnect = document.getElementById("inConnect");
-  const installBtn = document.getElementById("installBtn");
-  const chk1 = document.getElementById("chk1");
-  const chk2 = document.getElementById("chk2");
-  const bar = document.getElementById("bar");
-  const barFill = document.getElementById("barFill");
-  const inMsg = document.getElementById("inMsg");
-  const drop = document.getElementById("drop");
-  const zipIn = document.getElementById("zipIn");
+function makeWriter(root) {
+  const cache = new Map([["", root]]);
+  const check = path => { if (path.split("/").some(s => s === "..")) throw new Error("Unsafe path in archive: " + path); };
+  async function dirAt(path) {
+    if (cache.has(path)) return cache.get(path);
+    const parts = path.split("/"); const name = parts.pop();
+    const parent = await dirAt(parts.join("/"));
+    const d = await parent.getDirectoryHandle(name, { create: true });
+    cache.set(path, d);
+    return d;
+  }
+  return {
+    async dir(path) { path = path.replace(/\/+$/, ""); check(path); if (path) await dirAt(path); },
+    async file(path, data) {
+      check(path);
+      const parts = path.split("/"); const name = parts.pop();
+      const d = await dirAt(parts.join("/"));
+      const fh = await d.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write(data);
+      await w.close();
+    }
+  };
+}
 
-  function refreshInstaller() {
-    const connected = !!rootHandle;
-    inSd.textContent = connected ? "Connected: " + (rootHandle.name || "SD card") : "Not connected";
-    inConnect.hidden = connected;
-    installBtn.disabled = !(connected && plan && chk1.checked && chk2.checked && !busy);
+const KEEP = /^(System Volume Information|\$RECYCLE\.BIN|\.Trash-\d+|\.Trashes|\.fseventsd|\.Spotlight-V100|FOUND\.\d+|lost\+found)$/i;
+async function wipeCard(root) {
+  const names = [];
+  for await (const [n] of root.entries()) names.push(n);
+  for (const n of names) {
+    try { await root.removeEntry(n, { recursive: true }); }
+    catch (e) { if (!KEEP.test(n)) throw new Error('Could not erase "' + n + '" (' + (e.message || e) + ')'); }
+  }
+  return names.length;
+}
+
+const CUBE = /(^|\/)cubegm(\/|$)/;
+function prefixOf(path) { const m = CUBE.exec(path); return m ? path.slice(0, m.index + (m[1] ? 1 : 0)) : null; }
+
+async function prepareStock(sz, file, onText) {
+  await sz.call("open", { file }, null, onText);
+  const res = await sz.call("list");
+  const files = res.files;
+  const hit = files.find(f => prefixOf(f.path) !== null);
+  if (!hit) throw new Error("No cubegm folder inside this backup. Is it the right file?");
+  const prefix = prefixOf(hit.path);
+  const sizes = new Map(); let fileCount = 0;
+  for (const f of files) {
+    if (f.dir || !f.path.startsWith(prefix)) continue;
+    const top = f.path.slice(prefix.length).split("/")[0];
+    sizes.set(top, (sizes.get(top) || 0) + f.size);
+    fileCount++;
+  }
+  const big = [...sizes].filter(([, b]) => b > 120e6).map(([n]) => n);
+  const groups = big.length
+    ? big.map(n => ({ label: n, include: [prefix + n + "/*"] })).concat([{ label: "the rest", exclude: big.map(n => prefix + n + "/*") }])
+    : [{ label: "files" }];
+  return { prefix, fileCount, groups, name: file.name };
+}
+
+async function restoreStock(sz, info, writer, onFile, onText) {
+  for (const g of info.groups) {
+    await sz.call("extract", { prefix: info.prefix, include: g.include, exclude: g.exclude, label: g.label }, async m => {
+      if (m.t === "dir") await writer.dir(m.path);
+      else { await writer.file(m.path, m.data); onFile(m.path); }
+    }, onText);
+  }
+}
+
+const OVERLAY = "install_first/r36sx/";
+async function prepareZip(file) {
+  const zip = await JSZip.loadAsync(file);
+  const entries = Object.values(zip.files);
+  const hit = entries.find(e => prefixOf(e.name) !== null);
+  if (!hit) throw new Error("No cubegm folder inside this zip. Use the full TreeFrogUI_version.zip, not update.zip.");
+  const prefix = prefixOf(hit.name);
+  const items = entries.filter(e => e.name.length > prefix.length && e.name.startsWith(prefix));
+  const overlay = items.filter(e => !e.dir && e.name.slice(prefix.length).startsWith(OVERLAY));
+  if (!overlay.length) throw new Error("This TreeFrogUI zip has no R36SX boot files (install_first/r36sx).");
+  return { prefix, items, overlay, fileCount: items.filter(e => !e.dir).length + overlay.length, name: file.name };
+}
+
+async function installTreeFrog(info, writer, onFile) {
+  for (const e of info.items) {
+    const rel = e.name.slice(info.prefix.length);
+    if (e.dir) await writer.dir(rel);
+    else { await writer.file(rel, await e.async("uint8array")); onFile(rel); }
+  }
+  for (const e of info.overlay) {
+    const rel = e.name.slice(info.prefix.length + OVERLAY.length);
+    await writer.file(rel, await e.async("uint8array"));
+    onFile(rel);
+  }
+}
+
+async function latestTreeFrog() {
+  const r = await fetch("https://api.github.com/repos/tzubertowski/TreeFrogUI/releases/latest");
+  if (!r.ok) throw new Error("GitHub lookup failed (" + r.status + "). Try again in a few minutes.");
+  const rel = await r.json();
+  const a = (rel.assets || []).find(x => /^TreeFrogUI_.*\.zip$/i.test(x.name));
+  if (!a) throw new Error("The latest TreeFrogUI release has no full install zip.");
+  return { tag: rel.tag_name, name: a.name, url: a.browser_download_url };
+}
+
+async function downloadFile(base, url, name, onProgress) {
+  const r = await fetch(base + "/?url=" + encodeURIComponent(url));
+  if (!r.ok) throw new Error("Download failed (" + r.status + ") for " + name);
+  const total = Number(r.headers.get("content-length")) || 0;
+  const reader = r.body.getReader();
+  const chunks = []; let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); got += value.length;
+    onProgress(got, total);
+  }
+  if (total && got !== total) throw new Error("Download of " + name + " was cut short. Run it again.");
+  return new File(chunks, name);
+}
+
+async function testProxy(base, testUrl) {
+  const r = await fetch(base + "/?url=" + encodeURIComponent(testUrl), { headers: { Range: "bytes=0-99" } });
+  if (!r.ok) throw new Error("the relay answered " + r.status);
+  const reader = r.body.getReader();
+  const { value } = await reader.read();
+  reader.cancel();
+  if (!value || !value.length) throw new Error("the relay returned nothing");
+}
+
+  /* ---------- FrogUI installer UI ---------- */
+  const $ = id => document.getElementById(id);
+  const STOCK_BASE = "https://github.com/tzubertowski/H.OS_stock_backup/releases/download/stock-backups-v1/";
+  const STOCK = { v26: STOCK_BASE + "R36SX_v2.6_stock.7z", v27: STOCK_BASE + "R36SX_v2.7_stock.7z" };
+  const slots = { stock: null, zip: null, update: null };
+  let sevenZ = null, running = false, cardNames = [], curDev = "v26", proxyBase = "";
+  try { proxyBase = localStorage.getItem("r36sxhub.proxy") || ""; } catch (e) {}
+
+  function getSevenZ() {
+    if (!sevenZ) {
+      sevenZ = makeSevenZ(() => new Worker(
+        URL.createObjectURL(new Blob([$("szWorker").textContent], { type: "text/javascript" })),
+        { type: "module" }));
+    }
+    return sevenZ;
   }
 
   function setDevice(d) {
     curDev = d;
-    stockLink.href = DEVICES[d].backup;
+    $("stockLink").href = STOCK[d];
     document.querySelectorAll("#devSeg button").forEach(b => b.classList.toggle("active", b.dataset.dev === d));
-    analyze();
   }
   document.querySelectorAll("#devSeg button").forEach(b => b.addEventListener("click", () => setDevice(b.dataset.dev)));
-  stockLink.href = DEVICES[curDev].backup;
+  setDevice("v26");
 
-  async function loadVersions() {
+  (async function loadTfLink() {
     try {
-      const r = await fetch("https://api.github.com/repos/tzubertowski/TreeFrogUI/releases?per_page=12");
-      if (!r.ok) throw new Error("bad response");
-      releases = await r.json();
-    } catch (e) { releases = []; }
-    verSel.textContent = "";
-    if (!releases.length) {
-      const o = document.createElement("option"); o.textContent = "Latest release"; verSel.appendChild(o);
-      return;
-    }
-    releases.forEach((rel, i) => {
-      const o = document.createElement("option");
-      o.value = i; o.textContent = rel.tag_name + (i === 0 ? " (latest)" : "") + (rel.prerelease ? " (pre-release)" : "");
-      verSel.appendChild(o);
+      const r = await fetch("https://api.github.com/repos/tzubertowski/TreeFrogUI/releases/latest");
+      if (!r.ok) return;
+      const rel = await r.json();
+      const a = rel.assets.find(x => /^TreeFrogUI_.*\.zip$/i.test(x.name));
+      if (a) { $("tfLink").href = a.browser_download_url; $("tfLink").textContent = "Download TreeFrogUI " + rel.tag_name; }
+    } catch (e) {}
+  })();
+
+  function mode() {
+    if (slots.update && !slots.stock && !slots.zip) return "update";
+    if ((slots.stock && slots.stock.info && slots.zip && slots.zip.info) || proxyBase) return "full";
+    return slots.update ? "update" : null;
+  }
+  function required() {
+    const familiar = cardNames.some(n => /^(cubegm|rootfs)$/i.test(n));
+    return familiar ? "ERASE" : ((rootHandle && rootHandle.name) || "ERASE");
+  }
+  function renderChips() {
+    const box = $("chips"); box.textContent = "";
+    [["Stock backup", slots.stock], ["TreeFrogUI", slots.zip], ["Update", slots.update]].forEach(([label, s]) => {
+      if (!s) return;
+      const d = document.createElement("div"); d.className = "chip";
+      d.textContent = label + ": " + s.name + " · " + fmt(s.size) + " · " + s.status;
+      box.appendChild(d);
     });
-    verLink.href = releases[0].html_url;
   }
-  verSel.addEventListener("change", () => { const r = releases[Number(verSel.value)]; if (r) verLink.href = r.html_url; });
-  loadVersions();
-
-  async function loadZip(file) {
-    plan = null; curZip = null; zipInfo.textContent = "";
-    if (!file) { refreshInstaller(); return; }
-    if (/^update\.zip$/i.test(file.name)) {
-      plan = { mode: "update", file };
-      zipInfo.textContent = "Update package. It gets copied to the card root and TreeFrogUI applies it on the next boot.";
-      refreshInstaller(); return;
-    }
-    if (!window.JSZip) { zipInfo.textContent = "Could not load the zip tool. Check your internet and reload the page."; refreshInstaller(); return; }
-    zipInfo.textContent = "Reading zip...";
-    try { curZip = await JSZip.loadAsync(file); }
-    catch (e) { zipInfo.textContent = "That file is not a readable zip."; refreshInstaller(); return; }
-    analyze();
+  function refresh() {
+    const md = mode();
+    $("inSd").textContent = rootHandle ? "Connected: " + (rootHandle.name || "SD card") : "Not connected";
+    $("inConnect").textContent = rootHandle ? "Choose a different card" : "Choose SD card";
+    $("eraseBox").hidden = !(rootHandle && md === "full");
+    const needTyped = cardNames.length > 0;
+    $("typed").hidden = !needTyped;
+    const typedOk = !needTyped || $("typed").value.trim() === required();
+    const both = slots.stock && slots.stock.info && slots.zip && slots.zip.info;
+    $("srcNote").textContent = md === "update" ? "Update only: the card is not erased."
+      : both ? "Using the files you dropped."
+      : proxyBase ? "The page downloads the stock backup and the latest TreeFrogUI by itself when you press Install."
+      : "To download automatically, set up the free relay below once. Or drop the files yourself.";
+    $("installBtn").textContent = md === "update" ? "Copy update to card" : "Erase card and install";
+    $("installBtn").disabled = !(md && rootHandle && !running && (md === "update" || ($("chkFat").checked && typedOk)));
   }
-
-  function analyze() {
-    if (!curZip) return;
-    const hookDir = DEVICES[curDev].folder;
-    const names = Object.keys(curZip.files);
-    let prefix = null;
-    for (const n of names) {
-      const i = n.indexOf(hookDir);
-      if (i >= 0 && (i === 0 || n[i - 1] === "/")) { prefix = n.slice(0, i); break; }
-    }
-    if (prefix === null) {
-      plan = null;
-      zipInfo.textContent = "This is not a full TreeFrogUI install zip. Use TreeFrogUI_version.zip from the release, not update.zip.";
-      refreshInstaller(); return;
-    }
-    const items = [];
-    for (const n of names) {
-      const e = curZip.files[n];
-      if (e.dir || !n.startsWith(prefix)) continue;
-      const rel = n.slice(prefix.length);
-      if (rel.startsWith(hookDir)) { const d = rel.slice(hookDir.length); if (d) items.push({ e, dest: d, hook: true }); }
-      else if (/^(cubegm|frogui|roms|MD)\//i.test(rel)) items.push({ e, dest: rel, hook: false });
-    }
-    items.sort((a, b) => a.hook - b.hook);
-    plan = { mode: "full", items };
-    zipInfo.textContent = "Ready: " + items.length + " files to copy.";
-    refreshInstaller();
+  async function onCard() {
+    cardNames = [];
+    try { for await (const [n] of rootHandle.entries()) cardNames.push(n); } catch (e) {}
+    const n = cardNames.length;
+    const familiar = cardNames.some(x => /^(cubegm|rootfs)$/i.test(x));
+    $("eraseWarn").textContent = n === 0 ? "The card is empty."
+      : 'Everything on "' + (rootHandle.name || "this card") + '" will be erased (' + n + " items: " + cardNames.slice(0, 5).join(", ") + (n > 5 ? ", ..." : "") + ")." +
+        (familiar ? "" : " This does not look like an R36SX card. Make sure you picked the SD card itself, not a folder on your computer.");
+    $("typed").value = ""; $("typed").placeholder = "Type " + required() + " to confirm";
+    $("chkFat").checked = false;
+    refresh();
   }
 
-  zipIn.addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; loadZip(f); });
+  async function handleFiles(list) {
+    $("inMsg").textContent = "";
+    for (const file of list) {
+      const n = file.name;
+      const base = { name: n, size: file.size, status: "Checking..." };
+      let kind = null;
+      try {
+        if (/\.7z$/i.test(n)) {
+          kind = "stock"; slots.stock = Object.assign({}, base); renderChips();
+          const info = await prepareStock(getSevenZ(), file, t => { slots.stock.status = t; renderChips(); });
+          slots.stock = Object.assign({}, base, { info, status: "OK, " + info.fileCount + " files" });
+          const m = /v2\.([67])/i.exec(n); if (m) setDevice("v2" + m[1]);
+        } else if (/^update\.zip$/i.test(n)) {
+          kind = "update"; slots.update = { name: n, size: file.size, file, status: "OK, copied as-is" };
+        } else if (/\.zip$/i.test(n)) {
+          kind = "zip"; slots.zip = Object.assign({}, base); renderChips();
+          const info = await prepareZip(file);
+          slots.zip = Object.assign({}, base, { info, status: "OK, " + info.fileCount + " files" });
+        } else throw new Error("Not a .7z or .zip file");
+      } catch (e) {
+        if (kind) slots[kind] = null;
+        $("inMsg").textContent = n + ": " + (e.message || e);
+      }
+      renderChips();
+    }
+    refresh();
+  }
+
+  const drop = $("drop");
+  $("fileIn").addEventListener("change", e => { const f = [...e.target.files]; e.target.value = ""; handleFiles(f); });
   ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
   ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
-  drop.addEventListener("drop", e => loadZip(e.dataTransfer.files[0]));
-  [chk1, chk2].forEach(c => c.addEventListener("change", refreshInstaller));
-  inConnect.addEventListener("click", connect);
-  document.getElementById("inHome").addEventListener("click", () => show("home"));
+  drop.addEventListener("drop", e => handleFiles([...e.dataTransfer.files]));
+  $("inConnect").addEventListener("click", connect);
+  $("chkFat").addEventListener("change", refresh);
+  $("typed").addEventListener("input", refresh);
+  $("inHome").addEventListener("click", () => show("home"));
 
-  async function dirAt(base, path) {
-    let d = base;
-    for (const part of path.split("/").filter(Boolean)) d = await d.getDirectoryHandle(part, { create: true });
-    return d;
-  }
-  async function putBlob(dir, name, blob) {
-    const fh = await dir.getFileHandle(name, { create: true });
-    const w = await fh.createWritable();
-    await w.write(blob); await w.close();
-  }
+  function setBar(pct) { $("bar").hidden = false; $("barFill").style.width = pct + "%"; }
 
-  async function install() {
-    if (!rootHandle || !plan) return;
-    busy = true; refreshInstaller();
-    bar.hidden = false; barFill.style.width = "0%"; inMsg.textContent = "";
+  async function runInstall() {
+    const md = mode();
+    running = true; refresh(); setBar(0);
+    window.onbeforeunload = e => { e.preventDefault(); e.returnValue = ""; };
+    let lock = null;
+    try { lock = await navigator.wakeLock.request("screen"); } catch (e) {}
+    const say = t => { $("inMsg").textContent = t; };
     try {
-      if (plan.mode === "update") {
-        await putBlob(rootHandle, "update.zip", plan.file);
-        barFill.style.width = "100%";
-        inMsg.textContent = "Copied update.zip to the card root. Eject the card safely and boot the device to apply it.";
+      if (md === "update") {
+        say("Copying update.zip...");
+        await makeWriter(rootHandle).file("update.zip", slots.update.file);
+        setBar(100);
+        say("Done. update.zip is on the card. Eject it safely and boot the device to apply the update.");
       } else {
-        const d = new Date(), p = x => String(x).padStart(2, "0");
-        const stamp = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
-        let bkRoot = null, backed = 0, skipped = 0;
-        const total = plan.items.length;
-        for (let i = 0; i < total; i++) {
-          const it = plan.items[i];
-          const parts = it.dest.split("/"); const name = parts.pop(); const folder = parts.join("/");
-          const dir = await dirAt(rootHandle, folder);
-          let old = null;
-          try { old = await (await dir.getFileHandle(name)).getFile(); } catch (e) {}
-          if (old && /^roms\//i.test(it.dest)) { skipped++; }
-          else {
-            if (old) {
-              if (!bkRoot) bkRoot = await dirAt(rootHandle, "r36sxhub-backup-" + stamp);
-              await putBlob(await dirAt(bkRoot, folder), name, old);
-              backed++;
-            }
-            await putBlob(dir, name, await it.e.async("blob"));
-          }
-          barFill.style.width = Math.round(((i + 1) / total) * 100) + "%";
-          inMsg.textContent = "Copying " + (i + 1) + " of " + total + "...";
+        if (!(slots.zip && slots.zip.info)) {
+          say("Looking up the latest TreeFrogUI...");
+          const rel = await latestTreeFrog();
+          const f = await downloadFile(proxyBase, rel.url, rel.name, (g, t) => { setBar(t ? Math.round(g / t * 100) : 0); say("Downloading TreeFrogUI " + rel.tag + "... " + fmt(g) + (t ? " of " + fmt(t) : "")); });
+          say("Checking TreeFrogUI...");
+          const info = await prepareZip(f);
+          slots.zip = { name: rel.name, size: f.size, info, status: "downloaded, " + info.fileCount + " files" };
         }
-        inMsg.textContent = "Done. " + (total - skipped) + " files copied" +
-          (backed ? ", " + backed + " replaced files saved in r36sxhub-backup-" + stamp : "") +
-          (skipped ? ", " + skipped + " existing ROM files left alone" : "") +
-          ". Eject the card safely, put it in the device and power on. If you get a black screen, redo step 1 with the right backup.";
+        if (!(slots.stock && slots.stock.info)) {
+          const name = "R36SX_v2." + (curDev === "v27" ? "7" : "6") + "_stock.7z";
+          const f = await downloadFile(proxyBase, STOCK[curDev], name, (g, t) => { setBar(t ? Math.round(g / t * 100) : 0); say("Downloading the stock backup... " + fmt(g) + (t ? " of " + fmt(t) : "")); });
+          say("Checking the stock backup...");
+          const info = await prepareStock(getSevenZ(), f, say);
+          slots.stock = { name, size: f.size, info, status: "downloaded, " + info.fileCount + " files" };
+        }
+        renderChips(); setBar(0);
+        say("Erasing the card...");
+        await wipeCard(rootHandle);
+        const writer = makeWriter(rootHandle);
+        const total = slots.stock.info.fileCount + slots.zip.info.fileCount;
+        let done = 0;
+        const tick = label => p => { done++; setBar(Math.round(done / total * 100)); say(label + p); };
+        await restoreStock(getSevenZ(), slots.stock.info, writer, tick("Restoring stock backup: "), say);
+        await installTreeFrog(slots.zip.info, writer, tick("Installing TreeFrogUI: "));
+        setBar(100);
+        say("Done. Eject the card safely from your computer, put it in the device and power on. The first boot can take a minute.");
       }
-      if (stack.length) render();
+      stack = [{ name: rootHandle.name || "SD card", handle: rootHandle }];
+      render();
     } catch (e) {
-      inMsg.textContent = "Install stopped: " + e.message + ". Running it again is safe.";
+      if (sevenZ) { sevenZ.stop(); sevenZ = null; }
+      slots.stock = null; renderChips();
+      say("Install stopped: " + (e.message || e) + ". Drop the stock backup in again and rerun. It erases the card and starts over.");
     }
-    busy = false; refreshInstaller();
+    window.onbeforeunload = null;
+    if (lock) { try { lock.release(); } catch (e) {} }
+    running = false; refresh();
   }
-  installBtn.addEventListener("click", install);
+  $("installBtn").addEventListener("click", runInstall);
+
+  /* ---- relay (proxy) setup ---- */
+  $("proxyUrl").value = proxyBase;
+  $("proxyBox").open = !proxyBase;
+  $("copyProxy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("proxyCode").textContent); $("copyProxy").textContent = "Copied"; setTimeout(() => { $("copyProxy").textContent = "Copy code"; }, 1500); }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($("proxyCode")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+  });
+  $("saveProxy").addEventListener("click", async () => {
+    const u = $("proxyUrl").value.trim().replace(/\/+$/, "");
+    if (!/^https:\/\/\S+$/.test(u)) { $("proxyMsg").textContent = "Paste the full address, starting with https://"; return; }
+    $("proxyMsg").textContent = "Testing...";
+    try {
+      await testProxy(u, STOCK.v26);
+      proxyBase = u;
+      try { localStorage.setItem("r36sxhub.proxy", u); } catch (e) {}
+      $("proxyMsg").textContent = "Works. Automatic downloads are on.";
+      $("proxyBox").open = false;
+    } catch (e) { $("proxyMsg").textContent = "That did not work: " + (e.message || e); }
+    refresh();
+  });
+  refresh();
+
+  /* ---------- Artwork scraper (mini-scraper-cfw) ---------- */
+  (async function loadScraper() {
+    const ua = navigator.userAgent;
+    const os = /Android/i.test(ua) ? null : /Windows/i.test(ua) ? "windows" : /Mac/i.test(ua) ? "macos" : /Linux|X11/i.test(ua) ? "linux" : null;
+    const NAMES = { windows: "Windows", linux: "Linux", macos: "macOS" };
+    let rel = null;
+    try {
+      const r = await fetch("https://api.github.com/repos/tzubertowski/mini-scraper-cfw/releases/latest");
+      if (r.ok) rel = await r.json();
+    } catch (e) {}
+    if (!rel) { $("scInfo").textContent = "Could not check the latest version. The button opens the downloads page."; return; }
+    const pick = k => (rel.assets || []).find(a => a.name.toLowerCase().includes("-" + k + "-"));
+    const mine = os && pick(os);
+    if (mine) { $("scDl").href = mine.browser_download_url; $("scDl").textContent = "Download for " + NAMES[os]; }
+    $("scInfo").textContent = rel.tag_name + (mine ? " · " + mine.name : os ? "" : " · The scraper runs on a PC, not a phone.");
+    const box = $("scOthers"); box.textContent = "Other systems: ";
+    Object.keys(NAMES).filter(k => k !== os && pick(k)).forEach((k, i) => {
+      const a = document.createElement("a"); a.href = pick(k).browser_download_url; a.textContent = NAMES[k]; a.rel = "noopener";
+      if (i) box.append(" · "); box.append(a);
+    });
+  })();
+  $("scHome").addEventListener("click", () => show("home"));
 </script>
 </body>
 </html>
