@@ -122,9 +122,8 @@
   .typed { display: block; margin-top: 8px; width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(18,50,74,.35); font: inherit; }
   .drop small { opacity: .7; }
   #scraperView.off { opacity: 0; transform: scale(.9); filter: blur(10px); pointer-events: none; }
-  details.card { margin-bottom: 14px; }
-  details.card summary { cursor: pointer; }
-  pre.code { max-height: 160px; overflow: auto; padding: 12px; border-radius: 12px; background: rgba(18,50,74,.9); color: #e8f3fb; font-size: 12px; white-space: pre; user-select: all; }
+  .chip2 { display: inline-block; margin: 8px 6px 0 0; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.6); font-size: 13px; }
+  pre.code { max-height: 200px; overflow: auto; padding: 12px; border-radius: 12px; background: rgba(18,50,74,.9); color: #e8f3fb; font-size: 12px; white-space: pre-wrap; }
   @media (prefers-reduced-motion: reduce) { .view, #confirm, .tile, body { transition: none; } }
 </style>
 </head>
@@ -231,59 +230,18 @@
     </div>
 
     <div class="card step">
-      <h2><span class="num">1</span>Device</h2>
+      <h2><span class="num">1</span>Device and files</h2>
       <div class="seg" id="devSeg">
         <button class="active" data-dev="v26">R36SX v2.6</button>
         <button data-dev="v27">R36SX v2.7</button>
       </div>
-      <p class="note" id="srcNote"></p>
-    </div>
-
-    <details class="card" id="proxyBox">
-      <summary><b>Automatic downloads</b> (one-time setup, free)</summary>
-      <p>GitHub does not let web pages download its release files, so the page needs a tiny relay that you own. It takes about 3 minutes and you only do it once:</p>
-      <ol class="steps-list">
-        <li>Make a free account at <b>dash.cloudflare.com</b>, then open <b>Workers &amp; Pages</b> and create a new Worker (the button names may differ a little).</li>
-        <li>Open the code editor, delete everything in it, paste the code below, and press <b>Deploy</b>.</li>
-        <li>Copy the address it gives you (it ends in <b>.workers.dev</b>) and paste it here.</li>
-      </ol>
-      <pre class="code" id="proxyCode">// R36SX Hub relay: lets the hub page download GitHub release files.
-// It only forwards release downloads from the repos listed below.
-const ALLOWED = /^https:\/\/github\.com\/tzubertowski\/(TreeFrogUI|TreeFrogUI-installer|H\.OS_stock_backup|mini-scraper-cfw)\/releases\/download\//;
-const CORS = {
-  &quot;access-control-allow-origin&quot;: &quot;*&quot;,
-  &quot;access-control-allow-methods&quot;: &quot;GET, HEAD, OPTIONS&quot;,
-  &quot;access-control-allow-headers&quot;: &quot;range&quot;,
-  &quot;access-control-expose-headers&quot;: &quot;content-length, content-range&quot;
-};
-export default {
-  async fetch(request) {
-    if (request.method === &quot;OPTIONS&quot;) return new Response(null, { headers: CORS });
-    const target = new URL(request.url).searchParams.get(&quot;url&quot;) || &quot;&quot;;
-    if (!ALLOWED.test(target)) return new Response(&quot;Not allowed&quot;, { status: 403, headers: CORS });
-    const range = request.headers.get(&quot;range&quot;);
-    const upstream = await fetch(target, { redirect: &quot;follow&quot;, headers: range ? { range } : {} });
-    const headers = new Headers(upstream.headers);
-    for (const k in CORS) headers.set(k, CORS[k]);
-    return new Response(upstream.body, { status: upstream.status, headers });
-  }
-};
-</pre>
-      <button class="pill" id="copyProxy">Copy code</button>
-      <input id="proxyUrl" class="typed" placeholder="https://your-name.workers.dev" autocomplete="off">
-      <button class="pill dark" id="saveProxy" style="margin-top:8px">Save and test</button>
-      <p class="note" id="proxyMsg"></p>
-    </details>
-
-    <details class="card">
-      <summary><b>Or use files I downloaded myself</b></summary>
       <div class="fbactions" style="margin-top:12px">
         <a class="pill" id="stockLink" target="_blank" rel="noopener" href="#">Download stock backup</a>
         <a class="pill" id="tfLink" target="_blank" rel="noopener" href="https://github.com/tzubertowski/TreeFrogUI/releases/latest">Download TreeFrogUI</a>
       </div>
       <label class="drop" id="drop">Drop both downloaded files here<br><small>or click to choose them</small><input type="file" id="fileIn" multiple hidden></label>
       <div id="chips"></div>
-    </details>
+    </div>
 
     <div class="card step">
       <h2><span class="num">2</span>SD card</h2>
@@ -311,16 +269,39 @@ export default {
       <button class="pill" id="scHome">Home</button>
       <h1>Artwork scraper</h1>
     </div>
+
     <div class="card step">
-      <p style="margin-top:0">Mini Scraper adds box art to your ROMs for TreeFrogUI and other handheld frontends. It runs on your PC and reads and writes the SD card directly.</p>
-      <a class="pill dark" id="scDl" target="_blank" rel="noopener" href="https://github.com/tzubertowski/mini-scraper-cfw/releases/latest">Download Mini Scraper</a>
-      <p class="note" id="scInfo">Checking the latest version...</p>
-      <p class="note" id="scOthers"></p>
-      <ol class="steps-list">
-        <li>Unzip it and run <b>Mini Scraper</b>.</li>
-        <li>Keep the artwork source on <b>Automatic</b> (no account needed).</li>
-        <li>Choose your SD card, confirm it detected <b>TreeFrogUI</b>, then press <b>Add artwork</b>.</li>
-      </ol>
+      <h2><span class="num">1</span>SD card</h2>
+      <button class="pill" id="scConnect">Choose SD card</button>
+      <span id="scSd">Not connected</span>
+      <div id="scSystems"></div>
+      <p class="note" id="scScan"></p>
+    </div>
+
+    <div class="card step">
+      <h2><span class="num">2</span>Artwork</h2>
+      <div class="fbactions">
+        <select id="scType" class="pill" aria-label="Artwork type">
+          <option value="Named_Boxarts">Box art</option>
+          <option value="Named_Snaps">Gameplay snapshot</option>
+          <option value="Named_Titles">Title screen</option>
+        </select>
+        <select id="scWidth" class="pill" aria-label="Image width">
+          <option value="200">200 px wide</option>
+          <option value="300" selected>300 px wide</option>
+          <option value="400">400 px wide</option>
+        </select>
+      </div>
+      <label class="chk"><input type="checkbox" id="scForce"> Replace artwork that already exists</label>
+    </div>
+
+    <div class="card step">
+      <h2><span class="num">3</span>Add artwork</h2>
+      <button class="pill dark" id="scGo" disabled>Add artwork</button>
+      <button class="pill" id="scCancel" hidden>Stop</button>
+      <div class="bar" id="scBar" hidden><i id="scFill"></i></div>
+      <p class="note" id="scMsg"></p>
+      <details id="scMissingBox" hidden><summary id="scMissingSum"></summary><pre class="code" id="scMissing"></pre></details>
     </div>
   </div>
 </section>
@@ -504,6 +485,7 @@ self.onmessage = async (e) => {
     document.getElementById("fbTools").hidden = false;
     msg("");
     onCard();
+    onScraperCard();
     render();
   }
 
@@ -611,7 +593,7 @@ self.onmessage = async (e) => {
   document.getElementById("fbUpload").addEventListener("change", e => { const f = [...e.target.files]; e.target.value = ""; upload(f); });
 
 
-  /* ---------- Installer engine (7-Zip worker, SD writer, downloads, install steps) ---------- */
+  /* ---------- Installer engine (7-Zip worker, SD writer, install steps) ---------- */
 function makeSevenZ(createWorker) {
   const w = createWorker();
   let nextId = 1, cur = null, chain = Promise.resolve();
@@ -735,47 +717,12 @@ async function installTreeFrog(info, writer, onFile) {
   }
 }
 
-async function latestTreeFrog() {
-  const r = await fetch("https://api.github.com/repos/tzubertowski/TreeFrogUI/releases/latest");
-  if (!r.ok) throw new Error("GitHub lookup failed (" + r.status + "). Try again in a few minutes.");
-  const rel = await r.json();
-  const a = (rel.assets || []).find(x => /^TreeFrogUI_.*\.zip$/i.test(x.name));
-  if (!a) throw new Error("The latest TreeFrogUI release has no full install zip.");
-  return { tag: rel.tag_name, name: a.name, url: a.browser_download_url };
-}
-
-async function downloadFile(base, url, name, onProgress) {
-  const r = await fetch(base + "/?url=" + encodeURIComponent(url));
-  if (!r.ok) throw new Error("Download failed (" + r.status + ") for " + name);
-  const total = Number(r.headers.get("content-length")) || 0;
-  const reader = r.body.getReader();
-  const chunks = []; let got = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value); got += value.length;
-    onProgress(got, total);
-  }
-  if (total && got !== total) throw new Error("Download of " + name + " was cut short. Run it again.");
-  return new File(chunks, name);
-}
-
-async function testProxy(base, testUrl) {
-  const r = await fetch(base + "/?url=" + encodeURIComponent(testUrl), { headers: { Range: "bytes=0-99" } });
-  if (!r.ok) throw new Error("the relay answered " + r.status);
-  const reader = r.body.getReader();
-  const { value } = await reader.read();
-  reader.cancel();
-  if (!value || !value.length) throw new Error("the relay returned nothing");
-}
-
   /* ---------- FrogUI installer UI ---------- */
   const $ = id => document.getElementById(id);
   const STOCK_BASE = "https://github.com/tzubertowski/H.OS_stock_backup/releases/download/stock-backups-v1/";
   const STOCK = { v26: STOCK_BASE + "R36SX_v2.6_stock.7z", v27: STOCK_BASE + "R36SX_v2.7_stock.7z" };
   const slots = { stock: null, zip: null, update: null };
-  let sevenZ = null, running = false, cardNames = [], curDev = "v26", proxyBase = "";
-  try { proxyBase = localStorage.getItem("r36sxhub.proxy") || ""; } catch (e) {}
+  let sevenZ = null, running = false, cardNames = [];
 
   function getSevenZ() {
     if (!sevenZ) {
@@ -787,7 +734,6 @@ async function testProxy(base, testUrl) {
   }
 
   function setDevice(d) {
-    curDev = d;
     $("stockLink").href = STOCK[d];
     document.querySelectorAll("#devSeg button").forEach(b => b.classList.toggle("active", b.dataset.dev === d));
   }
@@ -805,8 +751,7 @@ async function testProxy(base, testUrl) {
   })();
 
   function mode() {
-    if (slots.update && !slots.stock && !slots.zip) return "update";
-    if ((slots.stock && slots.stock.info && slots.zip && slots.zip.info) || proxyBase) return "full";
+    if (slots.stock && slots.stock.info && slots.zip && slots.zip.info) return "full";
     return slots.update ? "update" : null;
   }
   function required() {
@@ -830,11 +775,6 @@ async function testProxy(base, testUrl) {
     const needTyped = cardNames.length > 0;
     $("typed").hidden = !needTyped;
     const typedOk = !needTyped || $("typed").value.trim() === required();
-    const both = slots.stock && slots.stock.info && slots.zip && slots.zip.info;
-    $("srcNote").textContent = md === "update" ? "Update only: the card is not erased."
-      : both ? "Using the files you dropped."
-      : proxyBase ? "The page downloads the stock backup and the latest TreeFrogUI by itself when you press Install."
-      : "To download automatically, set up the free relay below once. Or drop the files yourself.";
     $("installBtn").textContent = md === "update" ? "Copy update to card" : "Erase card and install";
     $("installBtn").disabled = !(md && rootHandle && !running && (md === "update" || ($("chkFat").checked && typedOk)));
   }
@@ -905,22 +845,6 @@ async function testProxy(base, testUrl) {
         setBar(100);
         say("Done. update.zip is on the card. Eject it safely and boot the device to apply the update.");
       } else {
-        if (!(slots.zip && slots.zip.info)) {
-          say("Looking up the latest TreeFrogUI...");
-          const rel = await latestTreeFrog();
-          const f = await downloadFile(proxyBase, rel.url, rel.name, (g, t) => { setBar(t ? Math.round(g / t * 100) : 0); say("Downloading TreeFrogUI " + rel.tag + "... " + fmt(g) + (t ? " of " + fmt(t) : "")); });
-          say("Checking TreeFrogUI...");
-          const info = await prepareZip(f);
-          slots.zip = { name: rel.name, size: f.size, info, status: "downloaded, " + info.fileCount + " files" };
-        }
-        if (!(slots.stock && slots.stock.info)) {
-          const name = "R36SX_v2." + (curDev === "v27" ? "7" : "6") + "_stock.7z";
-          const f = await downloadFile(proxyBase, STOCK[curDev], name, (g, t) => { setBar(t ? Math.round(g / t * 100) : 0); say("Downloading the stock backup... " + fmt(g) + (t ? " of " + fmt(t) : "")); });
-          say("Checking the stock backup...");
-          const info = await prepareStock(getSevenZ(), f, say);
-          slots.stock = { name, size: f.size, info, status: "downloaded, " + info.fileCount + " files" };
-        }
-        renderChips(); setBar(0);
         say("Erasing the card...");
         await wipeCard(rootHandle);
         const writer = makeWriter(rootHandle);
@@ -945,50 +869,350 @@ async function testProxy(base, testUrl) {
   }
   $("installBtn").addEventListener("click", runInstall);
 
-  /* ---- relay (proxy) setup ---- */
-  $("proxyUrl").value = proxyBase;
-  $("proxyBox").open = !proxyBase;
-  $("copyProxy").addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText($("proxyCode").textContent); $("copyProxy").textContent = "Copied"; setTimeout(() => { $("copyProxy").textContent = "Copy code"; }, 1500); }
-    catch (e) { const r = document.createRange(); r.selectNodeContents($("proxyCode")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
-  });
-  $("saveProxy").addEventListener("click", async () => {
-    const u = $("proxyUrl").value.trim().replace(/\/+$/, "");
-    if (!/^https:\/\/\S+$/.test(u)) { $("proxyMsg").textContent = "Paste the full address, starting with https://"; return; }
-    $("proxyMsg").textContent = "Testing...";
-    try {
-      await testProxy(u, STOCK.v26);
-      proxyBase = u;
-      try { localStorage.setItem("r36sxhub.proxy", u); } catch (e) {}
-      $("proxyMsg").textContent = "Works. Automatic downloads are on.";
-      $("proxyBox").open = false;
-    } catch (e) { $("proxyMsg").textContent = "That did not work: " + (e.message || e); }
-    refresh();
-  });
-  refresh();
+/* ---------- Scraper engine (port of mini-scraper-cfw for TreeFrogUI) ---------- */
+const MACHINES = {"Nintendo - Game Boy Color":{"e":["gbc","zip"],"a":["GBC","Game Boy Color"],"f":["Nintendo - Game Boy"]},"Nintendo - Game Boy Advance":{"e":["gba","zip"],"a":["GBA","Game Boy Advance"],"f":[]},"Nintendo - Game Boy":{"e":["gb","sgb","zip"],"a":["GB","SGB","Game Boy"],"f":["Nintendo - Game Boy Color"]},"Nintendo - Super Nintendo Entertainment System":{"e":["sfc","smc","zip"],"a":["SNES","SFC","Super Famicom","Super Nintendo","Super NES"],"f":[]},"Nintendo - Nintendo 64DD":{"e":["n64dd","zip"],"a":["N64DD","Nintendo 64DD"],"f":["Nintendo - Nintendo 64"]},"Nintendo - Nintendo 64":{"e":["n64","v64","z64","zip"],"a":["N64","Nintendo 64"],"f":[]},"Nintendo - Family Computer Disk System":{"e":["fds","zip"],"a":["FDS","Family Computer Disk System","Famicom Disk System"],"f":[]},"Nintendo - Nintendo DSi":{"e":["dsi","zip"],"a":["DSi","Nintendo DSi"],"f":["Nintendo - Nintendo DS"]},"Nintendo - Nintendo DS":{"e":["nds","zip"],"a":["DS","Nintendo DS"],"f":[]},"Nintendo - Nintendo Entertainment System":{"e":["nes","zip"],"a":["NES","FC","Famicom","Nintendo"],"f":[]},"Nintendo - Pokemon Mini":{"e":["pm","min","zip"],"a":["PKM","Pokemon Mini"],"f":[]},"Nintendo - Virtual Boy":{"e":["vb","zip"],"a":["VB","Virtual Boy"],"f":[]},"Handheld Electronic Game":{"e":["mgw","zip"],"a":["GW","Game & Watch"],"f":[]},"Sega - 32X":{"e":["32x","zip"],"a":["32X","THIRTYTWOX"],"f":[]},"Sega - Dreamcast":{"e":["dc","chd","gdi","m3u"],"a":["DC","Dreamcast"],"f":[]},"Sega - Mega-CD - Sega CD":{"e":["chd","iso","cue","m3u"],"a":["MDCD","Mega CD","Sega CD","MegaCD","SegaCD"],"f":[]},"Sega - Mega Drive - Genesis":{"e":["md","gen","zip"],"a":["MD","Mega Drive","Genesis"],"f":[]},"Sega - Game Gear":{"e":["gg","zip"],"a":["GG","Game Gear"],"f":[]},"Sega - Master System - Mark III":{"e":["sms","zip"],"a":["SMS","MS","Master System","Mark III"],"f":[]},"Sega - Saturn":{"e":["chd","cue"],"a":["Saturn"],"f":[]},"Sony - PlayStation Portable":{"e":["iso","cso","chd","m3u","pbp"],"a":["PSP","PlayStation Portable"],"f":["Sony - PlayStation"]},"Sony - PlayStation":{"e":["chd","cue","m3u","pbp"],"a":["PS","PSX","PS1","PlayStation"],"f":[]},"Sega - Naomi 2":{"e":["zip"],"a":["NAOMI2"],"f":["Sega - Naomi"]},"Sega - Naomi":{"e":["zip"],"a":["NAOMI"],"f":["Sega - Naomi 2"]},"Amstrad - CPC":{"e":["dsk","zip"],"a":["CPC","Amstrad"],"f":[]},"Atari - ST":{"e":["st","zip"],"a":["ST","ATARIST","Atari ST"],"f":[]},"Atari - 5200":{"e":["a52","zip"],"a":["A52","5200","Atari 5200"],"f":[]},"Atari - 7800":{"e":["a78","zip"],"a":["A78","7800","Atari 7800"],"f":[]},"Atari - Jaguar":{"e":["jag","zip"],"a":["JAG","Jaguar"],"f":[]},"Atari - Lynx":{"e":["lynx","zip"],"a":["LYNX","Lynx"],"f":[]},"Atari - 2600":{"e":["a26","zip"],"a":["A26","2600","Atari 2600","Atari"],"f":[]},"Bandai - WonderSwan Color":{"e":["wsc","zip"],"a":["WSC","WonderSwan Color"],"f":["Bandai - WonderSwan"]},"Bandai - WonderSwan":{"e":["ws","zip"],"a":["WS","WonderSwan"],"f":[]},"Coleco - ColecoVision":{"e":["col","zip"],"a":["COL","Coleco","ColecoVision"],"f":[]},"Commodore - Amiga":{"e":["adf","zip"],"a":["ADF","Amiga"],"f":[]},"Commodore - VIC-20":{"e":["v64","zip"],"a":["VIC"],"f":[]},"Commodore - 64":{"e":["d64","zip"],"a":["D64","C64","Commodore 64","Commodore"],"f":[]},"FBNeo - Arcade Games":{"e":["zip"],"a":["FBN","FBNeo","FB Alpha","FBA","Final Burn Alpha"],"f":["MAME"]},"GCE - Vectrex":{"e":["vec","zip"],"a":["VEC","Vectrex"],"f":[]},"GamePark - GP32":{"e":["gp","zip"],"a":["GP32","GamePark"],"f":[]},"MAME":{"e":["zip"],"a":["MAME","CPS1","CPS2","CPS3","VARCADE"],"f":["SNK - Neo Geo"]},"Microsoft - MSX2":{"e":["msx2","zip"],"a":["MSX2"],"f":[]},"Microsoft - MSX":{"e":["rom","zip"],"a":["MSX"],"f":["Microsoft - MSX2"]},"Mattel - Intellivision":{"e":["int","zip"],"a":["INT","Intellivision"],"f":[]},"NEC - PC Engine CD - TurboGrafx-CD":{"e":["chd","cue","m3u"],"a":["PCECD","TGCD","PC Engine CD","TurboGrafx-CD"],"f":[]},"NEC - PC Engine SuperGrafx":{"e":["sgx","zip"],"a":["SGFX","SGX","SuperGrafx"],"f":[]},"NEC - PC Engine - TurboGrafx 16":{"e":["pce","zip"],"a":["PCE","TG16","PC Engine","TurboGrafx 16"],"f":[]},"SNK - Neo Geo CD":{"e":["chd","cue","m3u"],"a":["NEOCD","NGCD","Neo Geo CD"],"f":[]},"SNK - Neo Geo Pocket Color":{"e":["ngc","zip"],"a":["NGPC","Neo Geo Pocket Color"],"f":["SNK - Neo Geo Pocket"]},"SNK - Neo Geo Pocket":{"e":["ngp","zip"],"a":["NGP","Neo Geo Pocket"],"f":[]},"SNK - Neo Geo":{"e":["neogeo","zip"],"a":["NEOGEO","Neo Geo"],"f":["MAME"]},"Magnavox - Odyssey2":{"e":["bin","zip"],"a":["ODYSSEY"],"f":[]},"TIC-80":{"e":["tic","zip"],"a":["TIC"],"f":[]},"Sharp - X68000":{"e":["hdf","zip"],"a":["X68000"],"f":[]},"Watara - Supervision":{"e":["sv","zip"],"a":["SV","Supervision"],"f":[]},"DOS":{"e":["pc","dos","zip"],"a":["DOS"],"f":[]},"DOOM":{"e":["wad","zip"],"a":["WAD"],"f":[]},"ScummVM":{"e":["scummvm","zip"],"a":["SCUMM"],"f":[]},"Atomiswave":{"e":["zip"],"a":["Atomiswave"],"f":[]}};
+const BAD_CHARS = new Set(['"', "&", "*", "/", ":", "<", ">", "?", "`", "|"]);
+function sanitizeName(name) {
+  return [...name.replace(/^\d+\)\s*/, "")].map(c => (BAD_CHARS.has(c) ? "_" : c)).join("");
+}
+function stripMetadata(name) {
+  let result = "", buf = "", p = 0, b = 0;
+  for (const ch of name) {
+    const inside = p > 0 || b > 0;
+    if (ch === "(") { buf += ch; p++; }
+    else if (ch === "[") { buf += ch; b++; }
+    else if (ch === ")" && p > 0) { buf += ch; p--; }
+    else if (ch === "]" && b > 0) { buf += ch; b--; }
+    else if (inside) buf += ch;
+    else result += ch;
+    if (p === 0 && b === 0) buf = "";
+  }
+  return (result + buf).trim();
+}
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function closest(str, arr) {
+  let best = Infinity, out = "";
+  for (const c of arr) { const d = levenshtein(str, c); if (d < best) { best = d; out = c; } }
+  return out;
+}
+function jaroDistance(a0, b0) {
+  const n = a0.replace(/\s+/g, "").toLowerCase(), i = b0.replace(/\s+/g, "").toLowerCase();
+  if (!n.length && !i.length) return 1;
+  if (!n.length || !i.length) return 0;
+  if (n === i) return 1;
+  const a = n.length, o = i.length, u = Math.floor(Math.max(a, o) / 2) - 1;
+  let c = 0; const l = new Array(a).fill(0), f = new Array(o).fill(0);
+  for (let s = 0; s < a; s++) for (let h = Math.max(0, s - u); h < Math.min(o, s + u + 1); h++) if (n[s] === i[h] && f[h] === 0) { l[s] = 1; f[h] = 1; c++; break; }
+  if (c === 0) return 0;
+  let y = 0, v = 0;
+  for (let g = 0; g < a; g++) if (l[g] === 1) { while (f[v] === 0) v++; if (n[g] !== i[v++]) y++; }
+  y /= 2;
+  return (c / a + c / o + (c - y) / c) / 3;
+}
+function jaroWinkler(r, t) {
+  let e = jaroDistance(r, t);
+  if (e > 0.7) {
+    let n = 0;
+    for (let i = 0; i < Math.min(r.length, t.length) && r[i] === t[i]; i++) n++;
+    n = Math.min(4, n);
+    e += 0.1 * n * (1 - e);
+  }
+  return e;
+}
+function findBestMatch(search, candidates, stats) {
+  if (!candidates.length) return undefined;
+  const stripped = candidates.map(stripMetadata);
+  const best = closest(search, stripped);
+  if (stats) stats.partial++;
+  return candidates[stripped.indexOf(best)];
+}
+function findFuzzyMatches(search, candidates) {
+  const stripped = candidates.map(stripMetadata);
+  const top = new Set(stripped.map(c => ({ c, s: jaroWinkler(search, c) })).filter(x => x.s >= 0.85).sort((a, b) => b.s - a.s).slice(0, 25).map(x => x.c));
+  const out = [];
+  stripped.forEach((c, i) => { if (top.has(c)) out.push(candidates[i]); });
+  return out;
+}
+function normFolder(v) { return v.toLowerCase().replace(/[^0-9a-z]+/g, " ").trim(); }
+function matchesAlias(folder, alias) {
+  const nf = normFolder(folder), na = normFolder(alias);
+  if (!na) return false;
+  return nf.replace(/ /g, "") === na.replace(/ /g, "") || (" " + nf + " ").includes(" " + na + " ");
+}
+function machineForFolder(name) {
+  for (const [m, d] of Object.entries(MACHINES)) if (d.a.some(a => matchesAlias(name, a))) return m;
+  return undefined;
+}
+const repoOf = machine => machine.replace(/ /g, "_");
+const THUMBS = "https://raw.githubusercontent.com/libretro-thumbnails/";
 
-  /* ---------- Artwork scraper (mini-scraper-cfw) ---------- */
-  (async function loadScraper() {
-    const ua = navigator.userAgent;
-    const os = /Android/i.test(ua) ? null : /Windows/i.test(ua) ? "windows" : /Mac/i.test(ua) ? "macos" : /Linux|X11/i.test(ua) ? "linux" : null;
-    const NAMES = { windows: "Windows", linux: "Linux", macos: "macOS" };
-    let rel = null;
-    try {
-      const r = await fetch("https://api.github.com/repos/tzubertowski/mini-scraper-cfw/releases/latest");
-      if (r.ok) rel = await r.json();
-    } catch (e) {}
-    if (!rel) { $("scInfo").textContent = "Could not check the latest version. The button opens the downloads page."; return; }
-    const pick = k => (rel.assets || []).find(a => a.name.toLowerCase().includes("-" + k + "-"));
-    const mine = os && pick(os);
-    if (mine) { $("scDl").href = mine.browser_download_url; $("scDl").textContent = "Download for " + NAMES[os]; }
-    $("scInfo").textContent = rel.tag_name + (mine ? " · " + mine.name : os ? "" : " · The scraper runs on a PC, not a phone.");
-    const box = $("scOthers"); box.textContent = "Other systems: ";
-    Object.keys(NAMES).filter(k => k !== os && pick(k)).forEach((k, i) => {
-      const a = document.createElement("a"); a.href = pick(k).browser_download_url; a.textContent = NAMES[k]; a.rel = "noopener";
-      if (i) box.append(" · "); box.append(a);
+/* ctx: { list(machine) -> {Named_Boxarts:[..],...}|null, fetchImage(machine,type,name) -> Blob|null, stats } */
+async function findArtwork(ctx, machine, type, stem, fallback = true) {
+  const png = sanitizeName(stem + ".png");
+  let blob = await ctx.fetchImage(machine, type, png);
+  if (blob) { ctx.stats.perfect++; return blob; }
+  const lists = await ctx.list(machine);
+  const arts = lists && lists[type];
+  const take = async name => { const b = await ctx.fetchImage(machine, type, name); return b || undefined; };
+  if (arts && arts.length) {
+    if (arts.includes(png)) { const b = await take(png); if (b) { ctx.stats.perfect++; return b; } }
+    const findMatch = async name => {
+      const matches = arts.filter(a => a.includes(sanitizeName(name)));
+      if (!matches.length) return undefined;
+      const best = findBestMatch(name, matches, ctx.stats);
+      return best ? take(best) : undefined;
+    };
+    let stripped = stripMetadata(stem);
+    let r = await findMatch(stripped); if (r) return r;
+    const fuzzy = findFuzzyMatches(sanitizeName(stripped), arts);
+    if (fuzzy.length) { const best = findBestMatch(stripped, fuzzy, ctx.stats); return best ? take(best) : undefined; }
+    stripped = stripped.replaceAll("DX", "").trim();
+    r = await findMatch(stripped); if (r) return r;
+    stripped = stripped.split(": ", 1)[0].trim();
+    r = await findMatch(stripped); if (r) return r;
+    stripped = stripped.split("- ", 1)[0].trim();
+    r = await findMatch(stripped); if (r) return r;
+  }
+  if (fallback) {
+    for (const fb of (MACHINES[machine] && MACHINES[machine].f) || []) {
+      const b = await findArtwork(ctx, fb, type, stem, false);
+      if (b) return b;
+    }
+  }
+  return undefined;
+}
+
+const NOT_ROM_DIRS = new Set(["ebook", "images", "videos"]);
+async function* entriesOf(dir) { for await (const [n, h] of dir.entries()) yield [n, h]; }
+
+async function listRoms(dir, machine) {
+  const exts = new Set(MACHINES[machine].e.map(x => x.toLowerCase()));
+  const out = [];
+  async function walk(d) {
+    const names = new Set(), files = [], dirs = [];
+    for await (const [n, h] of entriesOf(d)) {
+      names.add(n);
+      if (h.kind === "directory") { if (!n.startsWith(".")) dirs.push(h); } else files.push(n);
+    }
+    for (const n of files) {
+      const dot = n.lastIndexOf(".");
+      const ext = dot >= 0 ? n.slice(dot + 1).toLowerCase() : "";
+      if (!exts.has(ext)) continue;
+      if (ext !== "m3u" && names.has(n.replace(/ \(Disc \d+\).+$/, "") + ".m3u")) continue;
+      out.push({ dir: d, name: n, stem: dot >= 0 ? n.slice(0, dot) : n });
+    }
+    for (const h of dirs) await walk(h);
+  }
+  await walk(dir);
+  return out;
+}
+
+async function scanLibrary(root) {
+  const selfMachine = machineForFolder(root.name || "");
+  if (selfMachine && root.name) {
+    const files = await listRoms(root, selfMachine);
+    return { systems: [{ name: root.name, handle: root, machine: selfMachine, files }], total: files.length };
+  }
+  const candidates = [];
+  const seen = new Set();
+  const add = h => { if (h && !seen.has(h)) { seen.add(h); candidates.push(h); } };
+  for await (const [n, h] of entriesOf(root)) if (h.kind === "directory" && n.toLowerCase() === "roms") add(h);
+  try { const u = await root.getDirectoryHandle("userdata"); add(await u.getDirectoryHandle("roms")); } catch (e) {}
+  candidates.push(root);
+  let best = [];
+  for (const cand of candidates) {
+    const systems = [];
+    for await (const [n, h] of entriesOf(cand)) {
+      if (h.kind !== "directory" || NOT_ROM_DIRS.has(n.toLowerCase())) continue;
+      const machine = machineForFolder(n);
+      if (machine) systems.push({ name: n, handle: h, machine });
+    }
+    if (systems.length > best.length) best = systems;
+  }
+  best.sort((a, b) => a.name.localeCompare(b.name));
+  let total = 0;
+  for (const s of best) { s.files = await listRoms(s.handle, s.machine); total += s.files.length; }
+  return { systems: best, total };
+}
+
+async function hasArt(dir, stem) {
+  try { const res = await dir.getDirectoryHandle(".res"); await res.getFileHandle(stem + ".png"); return true; } catch (e) { return false; }
+}
+async function writeArt(dir, stem, blob) {
+  const res = await dir.getDirectoryHandle(".res", { create: true });
+  const fh = await res.getFileHandle(stem + ".png", { create: true });
+  const w = await fh.createWritable(); await w.write(blob); await w.close();
+}
+
+/* opts: { type, width, force, toPng(blob,width), list, fetchImage, onProgress, cancelled(), parallel } */
+async function scrapeLibrary(lib, opts) {
+  const stats = { perfect: 0, partial: 0 };
+  const res = { added: 0, skipped: 0, missing: [], failed: 0, cancelled: false };
+  const ctx = { list: opts.list, fetchImage: opts.fetchImage, stats };
+  let done = 0;
+  for (const sys of lib.systems) {
+    const queue = sys.files.slice();
+    const worker = async () => {
+      for (;;) {
+        if (opts.cancelled()) { res.cancelled = true; return; }
+        const f = queue.shift();
+        if (!f) return;
+        let outcome = "added";
+        try {
+          if (!opts.force && await hasArt(f.dir, f.stem)) { res.skipped++; outcome = "skipped"; }
+          else {
+            const blob = await findArtwork(ctx, sys.machine, opts.type, f.stem);
+            if (!blob) { res.missing.push(sys.name + "/" + f.name); outcome = "missing"; }
+            else { await writeArt(f.dir, f.stem, await opts.toPng(blob, opts.width)); res.added++; }
+          }
+        } catch (e) { res.failed++; outcome = "failed"; }
+        done++;
+        opts.onProgress({ done, total: lib.total, system: sys.name, game: f.name, outcome });
+      }
+    };
+    await Promise.all(Array.from({ length: opts.parallel || 4 }, worker));
+    if (res.cancelled) break;
+  }
+  res.stats = stats;
+  return res;
+}
+
+/* ---- network helpers (browser) ---- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function getWithRetry(url, init) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    let r;
+    try { r = await fetch(url, init); } catch (e) { await sleep(800 * (attempt + 1)); continue; }
+    if (r.status === 429 || r.status >= 500) { await sleep(Number(r.headers.get("retry-after")) * 1000 || 2000 * (attempt + 1)); continue; }
+    return r;
+  }
+  return null;
+}
+function makeThumbFetcher() {
+  return async (machine, type, name) => {
+    const url = THUMBS + repoOf(machine) + "/master/" + type + "/" + encodeURIComponent(name);
+    const r = await getWithRetry(url);
+    if (!r || !r.ok) return null;
+    return await r.blob();
+  };
+}
+function makeListLoader(cache) {
+  const memo = new Map();
+  return machine => {
+    if (!memo.has(machine)) memo.set(machine, (async () => {
+      const key = "thumblist:" + machine;
+      const hit = cache && await cache.get(key);
+      if (hit && Date.now() - hit.t < 7 * 864e5) return hit.v;
+      const r = await getWithRetry("https://api.github.com/repos/libretro-thumbnails/" + repoOf(machine) + "/git/trees/master?recursive=1");
+      if (!r || !r.ok) return null;
+      const j = await r.json();
+      const v = { Named_Boxarts: [], Named_Snaps: [], Named_Titles: [] };
+      for (const t of j.tree || []) {
+        const m = /^(Named_Boxarts|Named_Snaps|Named_Titles)\/([^/]+\.png)$/.exec(t.path);
+        if (m) v[m[1]].push(m[2]);
+      }
+      if (cache) await cache.set(key, { t: Date.now(), v });
+      return v;
+    })());
+    return memo.get(machine);
+  };
+}
+function makeIdbCache() {
+  if (typeof indexedDB === "undefined") return null;
+  const open = () => new Promise((res, rej) => { const q = indexedDB.open("r36sxhub", 1); q.onupgradeneeded = () => q.result.createObjectStore("kv"); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  const run = async (mode, fn) => { try { const db = await open(); return await new Promise((res, rej) => { const tx = db.transaction("kv", mode); const rq = fn(tx.objectStore("kv")); tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error); }); } catch (e) { return undefined; } };
+  return { get: k => run("readonly", s => s.get(k)), set: (k, v) => run("readwrite", s => s.put(v, k)) };
+}
+async function toPng(blob, width) {
+  const bmp = await createImageBitmap(blob);
+  const h = Math.max(1, Math.round(bmp.height * width / bmp.width));
+  const c = document.createElement("canvas"); c.width = width; c.height = h;
+  const g = c.getContext("2d"); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+  g.drawImage(bmp, 0, 0, width, h);
+  if (bmp.close) bmp.close();
+  return await new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error("PNG encode failed"))), "image/png"));
+}
+
+  /* ---------- Artwork scraper UI ---------- */
+  let scLib = null, scRunning = false, scStop = false;
+  const scEl = id => document.getElementById(id);
+
+  async function onScraperCard() {
+    scLib = null;
+    if (!rootHandle) return;
+    scEl("scSd").textContent = "Reading the card...";
+    scEl("scSystems").textContent = "";
+    try { scLib = await scanLibrary(rootHandle); }
+    catch (e) { scEl("scSd").textContent = "Could not read the card: " + (e.message || e); return; }
+    scEl("scSd").textContent = "Connected: " + (rootHandle.name || "SD card");
+    scLib.systems.forEach(s => {
+      const c = document.createElement("span"); c.className = "chip2";
+      c.textContent = s.name + " · " + s.files.length;
+      scEl("scSystems").appendChild(c);
     });
-  })();
-  $("scHome").addEventListener("click", () => show("home"));
+    scEl("scScan").textContent = scLib.systems.length
+      ? scLib.total + " games in " + scLib.systems.length + " systems."
+      : "No game folders found. Choose the SD card itself (it should have folders like GBA, GB or SFC).";
+    refreshScraper();
+  }
+  function refreshScraper() {
+    scEl("scConnect").textContent = rootHandle ? "Choose a different card" : "Choose SD card";
+    scEl("scGo").disabled = !(scLib && scLib.total > 0) || scRunning;
+    scEl("scCancel").hidden = !scRunning;
+  }
+
+  async function runScrape() {
+    scRunning = true; scStop = false; refreshScraper();
+    scEl("scBar").hidden = false; scEl("scFill").style.width = "0%"; scEl("scMissingBox").hidden = true;
+    window.onbeforeunload = e => { e.preventDefault(); e.returnValue = ""; };
+    let lock = null;
+    try { lock = await navigator.wakeLock.request("screen"); } catch (e) {}
+    const loader = makeListLoader(makeIdbCache());
+    const noList = new Set();
+    try {
+      const res = await scrapeLibrary(scLib, {
+        type: scEl("scType").value, width: Number(scEl("scWidth").value), force: scEl("scForce").checked,
+        toPng, parallel: 4,
+        list: async m => { const v = await loader(m); if (!v) noList.add(m); return v; },
+        fetchImage: makeThumbFetcher(),
+        cancelled: () => scStop,
+        onProgress: e => {
+          scEl("scFill").style.width = Math.round(e.done / e.total * 100) + "%";
+          scEl("scMsg").textContent = e.done + " of " + e.total + " · " + e.system + ": " + e.game;
+        }
+      });
+      let t = (res.cancelled ? "Stopped. " : "Done. ") + res.added + " added, " + res.skipped + " already had artwork, " + res.missing.length + " not found" + (res.failed ? ", " + res.failed + " failed" : "") + ".";
+      if (noList.size) t += " GitHub's lookup limit blocked name searching for " + noList.size + " system(s), so only exact names were matched. Run it again in an hour to finish them.";
+      scEl("scMsg").textContent = t;
+      if (res.missing.length) {
+        scEl("scMissingBox").hidden = false;
+        scEl("scMissingSum").textContent = res.missing.length + " games without artwork";
+        scEl("scMissing").textContent = res.missing.slice(0, 200).join("\n") + (res.missing.length > 200 ? "\n..." : "");
+      }
+    } catch (e) {
+      scEl("scMsg").textContent = "Stopped: " + (e.message || e);
+    }
+    window.onbeforeunload = null;
+    if (lock) { try { lock.release(); } catch (e) {} }
+    scRunning = false; refreshScraper();
+  }
+
+  scEl("scConnect").addEventListener("click", connect);
+  scEl("scGo").addEventListener("click", runScrape);
+  scEl("scCancel").addEventListener("click", () => { scStop = true; scEl("scMsg").textContent = "Stopping..."; });
+  scEl("scHome").addEventListener("click", () => show("home"));
 </script>
 </body>
 </html>
