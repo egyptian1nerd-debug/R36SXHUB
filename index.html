@@ -279,7 +279,7 @@
 
     <details class="card" id="pickBox" hidden>
       <summary><b>Choose what to copy</b> (optional)</summary>
-      <p class="note">Everything is on by default, which is the safe choice. Leaving out system files can stop the device from booting. Your device's own boot files are always copied.</p>
+      <p class="note">Everything is on by default, which is the safe choice. Leaving out system files can stop the device from booting. The boot files for the device you picked above (from the zip's install_first folder) are always copied into cubegm.</p>
       <p class="note" id="pickSummary"></p>
       <div id="pickZipWrap"><h3 class="h3">TreeFrogUI files (click a folder name to open it)</h3><div class="tree" id="pickZip"></div></div>
       <div id="pickStockWrap"><h3 class="h3">Stock backup folders</h3><div class="tree" id="pickStock"></div></div>
@@ -834,7 +834,7 @@ async function prepareZip(file) {
     if (e.dir) continue;
     const rel = e.name.slice(prefix.length);
     const m = /^install_first\/([^/]+)\//.exec(rel);
-    if (m) installs.add(m[1]);
+    if (m) { installs.add(m[1]); continue; }
     list.push({ path: rel, size: (e._data && e._data.uncompressedSize) || 0 });
   }
   if (!installs.size) throw new Error("This zip has no device boot files (install_first). Use the full TreeFrogUI_version.zip, not update.zip.");
@@ -848,7 +848,7 @@ function overlayFiles(info, dir) {
 async function installTreeFrog(info, writer, onFile, installDir, excluded) {
   for (const e of info.items) {
     const rel = e.name.slice(info.prefix.length);
-    if (isExcluded(excluded, rel)) continue;
+    if (rel.startsWith("install_first/") || isExcluded(excluded, rel)) continue;
     if (e.dir) await writer.dir(rel);
     else { await writer.file(rel, await e.async("uint8array")); onFile(rel); }
   }
@@ -892,7 +892,7 @@ async function installTreeFrog(info, writer, onFile, installDir, excluded) {
   function setDevice(k) {
     curDev = k; $("devSel").value = k;
     $("stockLink").href = STOCK_BASE + DEVICES[k].stock;
-    refresh();
+    refresh(); refreshPick();
   }
   $("devSel").addEventListener("change", e => setDevice(e.target.value));
 
@@ -968,6 +968,7 @@ async function installTreeFrog(info, writer, onFile, installDir, excluded) {
       renderTree($("pickZip"), z.tree || (z.tree = buildTree(z.list)), slots.zip.excluded, { locked: new Set(["cubegm/", "frogui/"]), id: "z:" });
       const t = selectedTotals(z.list, slots.zip.excluded);
       parts.push("TreeFrogUI: " + t.files + " of " + z.list.length + " files (" + fmt(t.bytes) + ")");
+      if (z.installs.has(DEVICES[curDev].install)) parts.push("Boot files for " + DEVICES[curDev].label + ": " + overlayFiles(z, DEVICES[curDev].install).length + " files, copied into cubegm automatically");
     }
     if (st) {
       renderTree($("pickStock"), st.tree || (st.tree = buildTree(st.list)), slots.stock.excluded, { locked: new Set(["cubegm/", "rootfs/"]), flat: true, lockFiles: true, id: "s:" });
