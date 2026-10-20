@@ -124,6 +124,12 @@
   #scraperView.off { opacity: 0; transform: scale(.9); filter: blur(10px); pointer-events: none; }
   .chip2 { display: inline-block; margin: 8px 6px 0 0; padding: 5px 10px; border-radius: 999px; background: rgba(var(--card-rgb),.6); font-size: 13px; }
   pre.code { max-height: 200px; overflow: auto; padding: 12px; border-radius: 12px; background: rgba(18,50,74,.9); color: #e8f3fb; font-size: 12px; white-space: pre-wrap; }
+  .h3 { margin: 12px 0 4px; font-size: 14px; }
+  .tree { max-height: 340px; overflow: auto; }
+  .trow { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+  .tname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tname.clickable { cursor: pointer; }
+  .tsize { opacity: .65; white-space: nowrap; }
   @media (prefers-reduced-motion: reduce) { .view, #confirm, .tile, body { transition: none; } }
 
   .editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 20px; margin: 12px 0; }
@@ -167,10 +173,8 @@
       </div>
       <div class="fbactions">
         <button class="pill" id="tReset">Reset all</button>
-        <button class="pill" id="tCopy">Copy theme code</button>
-        <button class="pill" id="tPaste">Paste theme code</button>
       </div>
-      <p class="note" id="tMsg"></p>
+      <p class="note" id="tMsg">Your theme saves automatically in a cookie on this browser.</p>
     </div>
   </div>
 </section>
@@ -203,7 +207,7 @@
         <div class="tile" style="background:#2fa84f">
           <svg viewBox="0 0 24 24"><path d="M12 4v10m0 0-4-4m4 4 4-4M5 19h14"/></svg>
         </div>
-        <span>FrogUI installer</span>
+        <span>TreeFrogUI installer</span>
       </button>
       <button class="app" data-go="scraper">
         <div class="tile" style="background:#e0507a">
@@ -258,15 +262,13 @@
   <div class="inner">
     <div class="fbtop">
       <button class="pill" id="inHome">Home</button>
-      <h1>FrogUI installer</h1>
+      <h1>TreeFrogUI installer</h1>
     </div>
 
     <div class="card step">
       <h2><span class="num">1</span>Device and files</h2>
-      <div class="seg" id="devSeg">
-        <button class="active" data-dev="v26">R36SX v2.6</button>
-        <button data-dev="v27">R36SX v2.7</button>
-      </div>
+      <select id="devSel" class="pill" aria-label="Device"></select>
+      <p class="note" id="devNote"></p>
       <div class="fbactions" style="margin-top:12px">
         <a class="pill" id="stockLink" target="_blank" rel="noopener" href="#">Download stock backup</a>
         <a class="pill" id="tfLink" target="_blank" rel="noopener" href="https://github.com/tzubertowski/TreeFrogUI/releases/latest">Download TreeFrogUI</a>
@@ -274,6 +276,15 @@
       <label class="drop" id="drop">Drop both downloaded files here<br><small>or click to choose them</small><input type="file" id="fileIn" multiple hidden></label>
       <div id="chips"></div>
     </div>
+
+    <details class="card" id="pickBox" hidden>
+      <summary><b>Choose what to copy</b> (optional)</summary>
+      <p class="note">Everything is on by default, which is the safe choice. Leaving out system files can stop the device from booting. Your device's own boot files are always copied.</p>
+      <p class="note" id="pickSummary"></p>
+      <div id="pickZipWrap"><h3 class="h3">TreeFrogUI files (click a folder name to open it)</h3><div class="tree" id="pickZip"></div></div>
+      <div id="pickStockWrap"><h3 class="h3">Stock backup folders</h3><div class="tree" id="pickStock"></div></div>
+      <button class="pill" id="pickAll" style="margin-top:10px">Select everything</button>
+    </details>
 
     <div class="card step">
       <h2><span class="num">2</span>SD card</h2>
@@ -490,7 +501,7 @@ self.onmessage = async (e) => {
     const match = themes.find(p => p.top === T.top && p.bottom === T.bottom && p.ink === T.ink && p.card === T.card && T.angle === 180);
     chosen = match || { name: "Custom" };
     document.querySelectorAll(".theme").forEach((b, i) => b.classList.toggle("active", themes[i] === match));
-    if (save) { try { localStorage.setItem("r36sxhub.theme", JSON.stringify(T)); } catch (e) {} }
+    if (save) saveTheme();
   }
 
   themes.forEach(t => {
@@ -506,18 +517,20 @@ self.onmessage = async (e) => {
   }
   const tMsg = document.getElementById("tMsg");
   document.getElementById("tReset").addEventListener("click", () => { T = Object.assign({}, themes[0], LOOK); applyTheme(true); tMsg.textContent = "Back to the default theme."; });
-  document.getElementById("tCopy").addEventListener("click", async () => {
-    const code = JSON.stringify(T);
-    try { await navigator.clipboard.writeText(code); tMsg.textContent = "Theme code copied. Send it to a friend."; }
-    catch (e) { prompt("Copy this theme code", code); }
-  });
-  document.getElementById("tPaste").addEventListener("click", () => {
-    const code = prompt("Paste a theme code");
-    if (!code) return;
-    try { const o = JSON.parse(code); T = clean(o); applyTheme(true); tMsg.textContent = "Theme applied."; }
-    catch (e) { tMsg.textContent = "That is not a valid theme code."; }
-  });
-  try { const saved = JSON.parse(localStorage.getItem("r36sxhub.theme") || "null"); if (saved) T = clean(saved); } catch (e) {}
+  const COOKIE = "r36sxhub_theme";
+  const cookiePath = () => location.pathname.replace(/[^/]*$/, "") || "/";
+  function readTheme() {
+    const m = document.cookie.match(new RegExp("(?:^|; )" + COOKIE + "=([^;]*)"));
+    if (m) return decodeURIComponent(m[1]);
+    try { return localStorage.getItem("r36sxhub.theme"); } catch (e) { return null; }
+  }
+  function saveTheme() {
+    const json = JSON.stringify(T);
+    document.cookie = COOKIE + "=" + encodeURIComponent(json) + "; max-age=31536000; path=" + cookiePath() + "; SameSite=Lax";
+    // some browsers refuse cookies on a page opened as a local file, so keep a backup copy
+    if (!document.cookie.includes(COOKIE + "=")) { try { localStorage.setItem("r36sxhub.theme", json); } catch (e) {} }
+  }
+  try { const saved = JSON.parse(readTheme() || "null"); if (saved) T = clean(saved); } catch (e) {}
   applyTheme(false);
 
   const filesView = document.getElementById("filesView");
@@ -750,6 +763,34 @@ async function wipeCard(root) {
 const CUBE = /(^|\/)cubegm(\/|$)/;
 function prefixOf(path) { const m = CUBE.exec(path); return m ? path.slice(0, m.index + (m[1] ? 1 : 0)) : null; }
 
+function isExcluded(set, rel) {
+  if (!set || !set.size) return false;
+  if (set.has(rel)) return true;
+  for (let i = rel.indexOf("/"); i >= 0; i = rel.indexOf("/", i + 1)) if (set.has(rel.slice(0, i + 1))) return true;
+  return false;
+}
+function buildTree(list) {
+  const root = { name: "", path: "", size: 0, files: 0, kids: new Map(), file: false };
+  for (const f of list) {
+    const parts = f.path.split("/");
+    let n = root, acc = "";
+    root.size += f.size; root.files++;
+    parts.forEach((p, i) => {
+      const last = i === parts.length - 1;
+      acc += p + (last ? "" : "/");
+      let k = n.kids.get(p);
+      if (!k) { k = { name: p, path: acc, size: 0, files: 0, kids: new Map(), file: last }; n.kids.set(p, k); }
+      k.size += f.size; k.files++; n = k;
+    });
+  }
+  return root;
+}
+function selectedTotals(list, excluded) {
+  let files = 0, bytes = 0;
+  for (const f of list) if (!isExcluded(excluded, f.path)) { files++; bytes += f.size; }
+  return { files, bytes };
+}
+
 async function prepareStock(sz, file, onText) {
   await sz.call("open", { file }, null, onText);
   const res = await sz.call("list");
@@ -757,30 +798,30 @@ async function prepareStock(sz, file, onText) {
   const hit = files.find(f => prefixOf(f.path) !== null);
   if (!hit) throw new Error("No cubegm folder inside this backup. Is it the right file?");
   const prefix = prefixOf(hit.path);
-  const sizes = new Map(); let fileCount = 0;
+  const sizes = new Map(), list = [];
   for (const f of files) {
     if (f.dir || !f.path.startsWith(prefix)) continue;
-    const top = f.path.slice(prefix.length).split("/")[0];
+    const rel = f.path.slice(prefix.length);
+    list.push({ path: rel, size: f.size });
+    const top = rel.split("/")[0];
     sizes.set(top, (sizes.get(top) || 0) + f.size);
-    fileCount++;
   }
   const big = [...sizes].filter(([, b]) => b > 120e6).map(([n]) => n);
   const groups = big.length
     ? big.map(n => ({ label: n, include: [prefix + n + "/*"] })).concat([{ label: "the rest", exclude: big.map(n => prefix + n + "/*") }])
     : [{ label: "files" }];
-  return { prefix, fileCount, groups, name: file.name };
+  return { prefix, fileCount: list.length, groups, name: file.name, list };
 }
 
-async function restoreStock(sz, info, writer, onFile, onText) {
+async function restoreStock(sz, info, writer, onFile, onText, excluded) {
   for (const g of info.groups) {
     await sz.call("extract", { prefix: info.prefix, include: g.include, exclude: g.exclude, label: g.label }, async m => {
-      if (m.t === "dir") await writer.dir(m.path);
-      else { await writer.file(m.path, m.data); onFile(m.path); }
+      if (m.t === "dir") { if (!isExcluded(excluded, m.path + "/")) await writer.dir(m.path); }
+      else if (!isExcluded(excluded, m.path)) { await writer.file(m.path, m.data); onFile(m.path); }
     }, onText);
   }
 }
 
-const OVERLAY = "install_first/r36sx/";
 async function prepareZip(file) {
   const zip = await JSZip.loadAsync(file);
   const entries = Object.values(zip.files);
@@ -788,30 +829,55 @@ async function prepareZip(file) {
   if (!hit) throw new Error("No cubegm folder inside this zip. Use the full TreeFrogUI_version.zip, not update.zip.");
   const prefix = prefixOf(hit.name);
   const items = entries.filter(e => e.name.length > prefix.length && e.name.startsWith(prefix));
-  const overlay = items.filter(e => !e.dir && e.name.slice(prefix.length).startsWith(OVERLAY));
-  if (!overlay.length) throw new Error("This TreeFrogUI zip has no R36SX boot files (install_first/r36sx).");
-  return { prefix, items, overlay, fileCount: items.filter(e => !e.dir).length + overlay.length, name: file.name };
+  const installs = new Set(), list = [];
+  for (const e of items) {
+    if (e.dir) continue;
+    const rel = e.name.slice(prefix.length);
+    const m = /^install_first\/([^/]+)\//.exec(rel);
+    if (m) installs.add(m[1]);
+    list.push({ path: rel, size: (e._data && e._data.uncompressedSize) || 0 });
+  }
+  if (!installs.size) throw new Error("This zip has no device boot files (install_first). Use the full TreeFrogUI_version.zip, not update.zip.");
+  return { prefix, items, installs, list, fileCount: list.length, name: file.name };
+}
+function overlayFiles(info, dir) {
+  const ov = "install_first/" + dir + "/";
+  return info.items.filter(e => !e.dir && e.name.slice(info.prefix.length).startsWith(ov));
 }
 
-async function installTreeFrog(info, writer, onFile) {
+async function installTreeFrog(info, writer, onFile, installDir, excluded) {
   for (const e of info.items) {
     const rel = e.name.slice(info.prefix.length);
+    if (isExcluded(excluded, rel)) continue;
     if (e.dir) await writer.dir(rel);
     else { await writer.file(rel, await e.async("uint8array")); onFile(rel); }
   }
-  for (const e of info.overlay) {
-    const rel = e.name.slice(info.prefix.length + OVERLAY.length);
-    await writer.file(rel, await e.async("uint8array"));
-    onFile(rel);
+  const ov = "install_first/" + installDir + "/";
+  for (const e of overlayFiles(info, installDir)) {
+    const dest = e.name.slice(info.prefix.length + ov.length);
+    await writer.file(dest, await e.async("uint8array"));
+    onFile(dest);
   }
 }
 
-  /* ---------- FrogUI installer UI ---------- */
+
+  /* ---------- TreeFrogUI installer UI ---------- */
   const $ = id => document.getElementById(id);
   const STOCK_BASE = "https://github.com/tzubertowski/H.OS_stock_backup/releases/download/stock-backups-v1/";
-  const STOCK = { v26: STOCK_BASE + "R36SX_v2.6_stock.7z", v27: STOCK_BASE + "R36SX_v2.7_stock.7z" };
+  const DEVICES = {
+    r36sx26:  { label: "R36SX v2.6", stock: "R36SX_v2.6_stock.7z", install: "r36sx" },
+    r36sx27:  { label: "R36SX v2.7", stock: "R36SX_v2.7_stock.7z", install: "r36sx" },
+    r36hd:    { label: "R36HD",      stock: "R36HD_stock.7z",      install: "r36sx" },
+    sf3000:   { label: "SF3000",     stock: "SF3000_stock.7z",     install: "sf3000" },
+    sf3000hd: { label: "SF3000 HD",  stock: "SF3000_HD_stock.7z",  install: "sf3000hd" },
+    sf3100:   { label: "SF3100",     stock: "SF3100_stock.7z",     install: "sf3100" },
+    sf3500:   { label: "SF3500",     stock: "SF3500_stock.7z",     install: "sf3500" },
+    gb350:    { label: "GB350",      stock: "GB350_stock.7z",      install: "gb350" }
+  };
+  let curDev = "r36sx26";
   const slots = { stock: null, zip: null, update: null };
   let sevenZ = null, running = false, cardNames = [];
+  const openSet = new Set();
 
   function getSevenZ() {
     if (!sevenZ) {
@@ -822,12 +888,13 @@ async function installTreeFrog(info, writer, onFile) {
     return sevenZ;
   }
 
-  function setDevice(d) {
-    $("stockLink").href = STOCK[d];
-    document.querySelectorAll("#devSeg button").forEach(b => b.classList.toggle("active", b.dataset.dev === d));
+  Object.keys(DEVICES).forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = DEVICES[k].label; $("devSel").appendChild(o); });
+  function setDevice(k) {
+    curDev = k; $("devSel").value = k;
+    $("stockLink").href = STOCK_BASE + DEVICES[k].stock;
+    refresh();
   }
-  document.querySelectorAll("#devSeg button").forEach(b => b.addEventListener("click", () => setDevice(b.dataset.dev)));
-  setDevice("v26");
+  $("devSel").addEventListener("change", e => setDevice(e.target.value));
 
   (async function loadTfLink() {
     try {
@@ -839,9 +906,10 @@ async function installTreeFrog(info, writer, onFile) {
     } catch (e) {}
   })();
 
+  function zipOverlayOk() { return !(slots.zip && slots.zip.info) || slots.zip.info.installs.has(DEVICES[curDev].install); }
   function mode() {
-    if (slots.stock && slots.stock.info && slots.zip && slots.zip.info) return "full";
-    return slots.update ? "update" : null;
+    if (slots.stock && slots.stock.info && slots.zip && slots.zip.info && zipOverlayOk()) return "full";
+    return slots.update && !(slots.stock || slots.zip) ? "update" : null;
   }
   function required() {
     const familiar = cardNames.some(n => /^(cubegm|rootfs)$/i.test(n));
@@ -856,8 +924,63 @@ async function installTreeFrog(info, writer, onFile) {
       box.appendChild(d);
     });
   }
+
+  /* ---- choose what to copy ---- */
+  const nodeSort = (a, b) => (a.file !== b.file ? (a.file ? 1 : -1) : a.name.localeCompare(b.name));
+  function renderTree(box, tree, excluded, o) {
+    box.textContent = "";
+    const offBelow = p => { for (const x of excluded) if (x !== p && x.startsWith(p)) return true; return false; };
+    const add = (node, depth) => {
+      const dir = !node.file, p = node.path;
+      const needed = o.locked.has(p) || (o.lockFiles && node.file);
+      const off = isExcluded(excluded, p);
+      const key = o.id + p;
+      const isOpen = !o.flat && dir && openSet.has(key);
+      const line = document.createElement("div"); line.className = "trow"; line.style.paddingLeft = depth * 18 + "px";
+      const cb = document.createElement("input"); cb.type = "checkbox";
+      cb.checked = !off; cb.indeterminate = !off && dir && offBelow(p);
+      cb.disabled = needed || (off && !excluded.has(p));
+      cb.addEventListener("change", () => {
+        for (const x of [...excluded]) if (x.startsWith(p)) excluded.delete(x);
+        if (!cb.checked) excluded.add(p);
+        refreshPick();
+      });
+      const nm = document.createElement("span"); nm.className = "tname" + (dir && !o.flat ? " clickable" : "");
+      nm.textContent = (dir && !o.flat ? (isOpen ? "▾ " : "▸ ") : "") + node.name + (dir ? "/" : "") + (needed ? "  (needed)" : "");
+      if (dir && !o.flat) nm.addEventListener("click", () => { if (openSet.has(key)) openSet.delete(key); else openSet.add(key); refreshPick(); });
+      const sz = document.createElement("span"); sz.className = "tsize";
+      sz.textContent = fmt(node.size) + (dir ? " · " + node.files + " files" : "");
+      line.append(cb, nm, sz); box.appendChild(line);
+      if (isOpen) {
+        const kids = [...node.kids.values()].sort(nodeSort);
+        kids.slice(0, 200).forEach(k => add(k, depth + 1));
+        if (kids.length > 200) { const m = document.createElement("div"); m.className = "trow"; m.style.paddingLeft = (depth + 1) * 18 + "px"; m.textContent = "... and " + (kids.length - 200) + " more"; box.appendChild(m); }
+      }
+    };
+    [...tree.kids.values()].sort(nodeSort).forEach(n => add(n, 0));
+  }
+  function refreshPick() {
+    const z = slots.zip && slots.zip.info, st = slots.stock && slots.stock.info;
+    $("pickBox").hidden = !(z || st);
+    $("pickZipWrap").hidden = !z; $("pickStockWrap").hidden = !st;
+    const parts = [];
+    if (z) {
+      renderTree($("pickZip"), z.tree || (z.tree = buildTree(z.list)), slots.zip.excluded, { locked: new Set(["cubegm/", "frogui/"]), id: "z:" });
+      const t = selectedTotals(z.list, slots.zip.excluded);
+      parts.push("TreeFrogUI: " + t.files + " of " + z.list.length + " files (" + fmt(t.bytes) + ")");
+    }
+    if (st) {
+      renderTree($("pickStock"), st.tree || (st.tree = buildTree(st.list)), slots.stock.excluded, { locked: new Set(["cubegm/", "rootfs/"]), flat: true, lockFiles: true, id: "s:" });
+      const t = selectedTotals(st.list, slots.stock.excluded);
+      parts.push("Stock backup: " + t.files + " of " + st.list.length + " files (" + fmt(t.bytes) + ")");
+    }
+    $("pickSummary").textContent = parts.join("  ·  ");
+  }
+  $("pickAll").addEventListener("click", () => { if (slots.zip) slots.zip.excluded.clear(); if (slots.stock) slots.stock.excluded.clear(); refreshPick(); });
+
   function refresh() {
     const md = mode();
+    $("devNote").textContent = zipOverlayOk() ? "" : "This TreeFrogUI zip has no boot files for " + DEVICES[curDev].label + ".";
     $("inSd").textContent = rootHandle ? "Connected: " + (rootHandle.name || "SD card") : "Not connected";
     $("inConnect").textContent = rootHandle ? "Choose a different card" : "Choose SD card";
     $("eraseBox").hidden = !(rootHandle && md === "full");
@@ -874,7 +997,7 @@ async function installTreeFrog(info, writer, onFile) {
     const familiar = cardNames.some(x => /^(cubegm|rootfs)$/i.test(x));
     $("eraseWarn").textContent = n === 0 ? "The card is empty."
       : 'Everything on "' + (rootHandle.name || "this card") + '" will be erased (' + n + " items: " + cardNames.slice(0, 5).join(", ") + (n > 5 ? ", ..." : "") + ")." +
-        (familiar ? "" : " This does not look like an R36SX card. Make sure you picked the SD card itself, not a folder on your computer.");
+        (familiar ? "" : " This does not look like a handheld card. Make sure you picked the SD card itself, not a folder on your computer.");
     $("typed").value = ""; $("typed").placeholder = "Type " + required() + " to confirm";
     $("chkFat").checked = false;
     refresh();
@@ -890,14 +1013,15 @@ async function installTreeFrog(info, writer, onFile) {
         if (/\.7z$/i.test(n)) {
           kind = "stock"; slots.stock = Object.assign({}, base); renderChips();
           const info = await prepareStock(getSevenZ(), file, t => { slots.stock.status = t; renderChips(); });
-          slots.stock = Object.assign({}, base, { info, status: "OK, " + info.fileCount + " files" });
-          const m = /v2\.([67])/i.exec(n); if (m) setDevice("v2" + m[1]);
+          slots.stock = Object.assign({}, base, { info, excluded: new Set(), status: "OK, " + info.fileCount + " files" });
+          const dk = Object.keys(DEVICES).find(k => DEVICES[k].stock.toLowerCase() === n.toLowerCase());
+          if (dk) setDevice(dk);
         } else if (/^update\.zip$/i.test(n)) {
           kind = "update"; slots.update = { name: n, size: file.size, file, status: "OK, copied as-is" };
         } else if (/\.zip$/i.test(n)) {
           kind = "zip"; slots.zip = Object.assign({}, base); renderChips();
           const info = await prepareZip(file);
-          slots.zip = Object.assign({}, base, { info, status: "OK, " + info.fileCount + " files" });
+          slots.zip = Object.assign({}, base, { info, excluded: new Set(), status: "OK, " + info.fileCount + " files" });
         } else throw new Error("Not a .7z or .zip file");
       } catch (e) {
         if (kind) slots[kind] = null;
@@ -905,7 +1029,7 @@ async function installTreeFrog(info, writer, onFile) {
       }
       renderChips();
     }
-    refresh();
+    refreshPick(); refresh();
   }
 
   const drop = $("drop");
@@ -917,6 +1041,7 @@ async function installTreeFrog(info, writer, onFile) {
   $("chkFat").addEventListener("change", refresh);
   $("typed").addEventListener("input", refresh);
   $("inHome").addEventListener("click", () => show("home"));
+  setDevice("r36sx26");
 
   function setBar(pct) { $("bar").hidden = false; $("barFill").style.width = pct + "%"; }
 
@@ -934,14 +1059,16 @@ async function installTreeFrog(info, writer, onFile) {
         setBar(100);
         say("Done. update.zip is on the card. Eject it safely and boot the device to apply the update.");
       } else {
+        const dev = DEVICES[curDev];
+        const stockEx = slots.stock.excluded, zipEx = slots.zip.excluded;
+        const total = selectedTotals(slots.stock.info.list, stockEx).files + selectedTotals(slots.zip.info.list, zipEx).files + overlayFiles(slots.zip.info, dev.install).length;
         say("Erasing the card...");
         await wipeCard(rootHandle);
         const writer = makeWriter(rootHandle);
-        const total = slots.stock.info.fileCount + slots.zip.info.fileCount;
         let done = 0;
         const tick = label => p => { done++; setBar(Math.round(done / total * 100)); say(label + p); };
-        await restoreStock(getSevenZ(), slots.stock.info, writer, tick("Restoring stock backup: "), say);
-        await installTreeFrog(slots.zip.info, writer, tick("Installing TreeFrogUI: "));
+        await restoreStock(getSevenZ(), slots.stock.info, writer, tick("Restoring stock backup: "), say, stockEx);
+        await installTreeFrog(slots.zip.info, writer, tick("Installing TreeFrogUI: "), dev.install, zipEx);
         setBar(100);
         say("Done. Eject the card safely from your computer, put it in the device and power on. The first boot can take a minute.");
       }
@@ -949,7 +1076,7 @@ async function installTreeFrog(info, writer, onFile) {
       render();
     } catch (e) {
       if (sevenZ) { sevenZ.stop(); sevenZ = null; }
-      slots.stock = null; renderChips();
+      slots.stock = null; renderChips(); refreshPick();
       say("Install stopped: " + (e.message || e) + ". Drop the stock backup in again and rerun. It erases the card and starts over.");
     }
     window.onbeforeunload = null;
@@ -957,6 +1084,7 @@ async function installTreeFrog(info, writer, onFile) {
     running = false; refresh();
   }
   $("installBtn").addEventListener("click", runInstall);
+
 
 /* ---------- Scraper engine (port of mini-scraper-cfw for TreeFrogUI) ---------- */
 const MACHINES = {"Nintendo - Game Boy Color":{"e":["gbc","zip"],"a":["GBC","Game Boy Color"],"f":["Nintendo - Game Boy"]},"Nintendo - Game Boy Advance":{"e":["gba","zip"],"a":["GBA","Game Boy Advance"],"f":[]},"Nintendo - Game Boy":{"e":["gb","sgb","zip"],"a":["GB","SGB","Game Boy"],"f":["Nintendo - Game Boy Color"]},"Nintendo - Super Nintendo Entertainment System":{"e":["sfc","smc","zip"],"a":["SNES","SFC","Super Famicom","Super Nintendo","Super NES"],"f":[]},"Nintendo - Nintendo 64DD":{"e":["n64dd","zip"],"a":["N64DD","Nintendo 64DD"],"f":["Nintendo - Nintendo 64"]},"Nintendo - Nintendo 64":{"e":["n64","v64","z64","zip"],"a":["N64","Nintendo 64"],"f":[]},"Nintendo - Family Computer Disk System":{"e":["fds","zip"],"a":["FDS","Family Computer Disk System","Famicom Disk System"],"f":[]},"Nintendo - Nintendo DSi":{"e":["dsi","zip"],"a":["DSi","Nintendo DSi"],"f":["Nintendo - Nintendo DS"]},"Nintendo - Nintendo DS":{"e":["nds","zip"],"a":["DS","Nintendo DS"],"f":[]},"Nintendo - Nintendo Entertainment System":{"e":["nes","zip"],"a":["NES","FC","Famicom","Nintendo"],"f":[]},"Nintendo - Pokemon Mini":{"e":["pm","min","zip"],"a":["PKM","Pokemon Mini"],"f":[]},"Nintendo - Virtual Boy":{"e":["vb","zip"],"a":["VB","Virtual Boy"],"f":[]},"Handheld Electronic Game":{"e":["mgw","zip"],"a":["GW","Game & Watch"],"f":[]},"Sega - 32X":{"e":["32x","zip"],"a":["32X","THIRTYTWOX"],"f":[]},"Sega - Dreamcast":{"e":["dc","chd","gdi","m3u"],"a":["DC","Dreamcast"],"f":[]},"Sega - Mega-CD - Sega CD":{"e":["chd","iso","cue","m3u"],"a":["MDCD","Mega CD","Sega CD","MegaCD","SegaCD"],"f":[]},"Sega - Mega Drive - Genesis":{"e":["md","gen","zip"],"a":["MD","Mega Drive","Genesis"],"f":[]},"Sega - Game Gear":{"e":["gg","zip"],"a":["GG","Game Gear"],"f":[]},"Sega - Master System - Mark III":{"e":["sms","zip"],"a":["SMS","MS","Master System","Mark III"],"f":[]},"Sega - Saturn":{"e":["chd","cue"],"a":["Saturn"],"f":[]},"Sony - PlayStation Portable":{"e":["iso","cso","chd","m3u","pbp"],"a":["PSP","PlayStation Portable"],"f":["Sony - PlayStation"]},"Sony - PlayStation":{"e":["chd","cue","m3u","pbp"],"a":["PS","PSX","PS1","PlayStation"],"f":[]},"Sega - Naomi 2":{"e":["zip"],"a":["NAOMI2"],"f":["Sega - Naomi"]},"Sega - Naomi":{"e":["zip"],"a":["NAOMI"],"f":["Sega - Naomi 2"]},"Amstrad - CPC":{"e":["dsk","zip"],"a":["CPC","Amstrad"],"f":[]},"Atari - ST":{"e":["st","zip"],"a":["ST","ATARIST","Atari ST"],"f":[]},"Atari - 5200":{"e":["a52","zip"],"a":["A52","5200","Atari 5200"],"f":[]},"Atari - 7800":{"e":["a78","zip"],"a":["A78","7800","Atari 7800"],"f":[]},"Atari - Jaguar":{"e":["jag","zip"],"a":["JAG","Jaguar"],"f":[]},"Atari - Lynx":{"e":["lynx","zip"],"a":["LYNX","Lynx"],"f":[]},"Atari - 2600":{"e":["a26","zip"],"a":["A26","2600","Atari 2600","Atari"],"f":[]},"Bandai - WonderSwan Color":{"e":["wsc","zip"],"a":["WSC","WonderSwan Color"],"f":["Bandai - WonderSwan"]},"Bandai - WonderSwan":{"e":["ws","zip"],"a":["WS","WonderSwan"],"f":[]},"Coleco - ColecoVision":{"e":["col","zip"],"a":["COL","Coleco","ColecoVision"],"f":[]},"Commodore - Amiga":{"e":["adf","zip"],"a":["ADF","Amiga"],"f":[]},"Commodore - VIC-20":{"e":["v64","zip"],"a":["VIC"],"f":[]},"Commodore - 64":{"e":["d64","zip"],"a":["D64","C64","Commodore 64","Commodore"],"f":[]},"FBNeo - Arcade Games":{"e":["zip"],"a":["FBN","FBNeo","FB Alpha","FBA","Final Burn Alpha"],"f":["MAME"]},"GCE - Vectrex":{"e":["vec","zip"],"a":["VEC","Vectrex"],"f":[]},"GamePark - GP32":{"e":["gp","zip"],"a":["GP32","GamePark"],"f":[]},"MAME":{"e":["zip"],"a":["MAME","CPS1","CPS2","CPS3","VARCADE"],"f":["SNK - Neo Geo"]},"Microsoft - MSX2":{"e":["msx2","zip"],"a":["MSX2"],"f":[]},"Microsoft - MSX":{"e":["rom","zip"],"a":["MSX"],"f":["Microsoft - MSX2"]},"Mattel - Intellivision":{"e":["int","zip"],"a":["INT","Intellivision"],"f":[]},"NEC - PC Engine CD - TurboGrafx-CD":{"e":["chd","cue","m3u"],"a":["PCECD","TGCD","PC Engine CD","TurboGrafx-CD"],"f":[]},"NEC - PC Engine SuperGrafx":{"e":["sgx","zip"],"a":["SGFX","SGX","SuperGrafx"],"f":[]},"NEC - PC Engine - TurboGrafx 16":{"e":["pce","zip"],"a":["PCE","TG16","PC Engine","TurboGrafx 16"],"f":[]},"SNK - Neo Geo CD":{"e":["chd","cue","m3u"],"a":["NEOCD","NGCD","Neo Geo CD"],"f":[]},"SNK - Neo Geo Pocket Color":{"e":["ngc","zip"],"a":["NGPC","Neo Geo Pocket Color"],"f":["SNK - Neo Geo Pocket"]},"SNK - Neo Geo Pocket":{"e":["ngp","zip"],"a":["NGP","Neo Geo Pocket"],"f":[]},"SNK - Neo Geo":{"e":["neogeo","zip"],"a":["NEOGEO","Neo Geo"],"f":["MAME"]},"Magnavox - Odyssey2":{"e":["bin","zip"],"a":["ODYSSEY"],"f":[]},"TIC-80":{"e":["tic","zip"],"a":["TIC"],"f":[]},"Sharp - X68000":{"e":["hdf","zip"],"a":["X68000"],"f":[]},"Watara - Supervision":{"e":["sv","zip"],"a":["SV","Supervision"],"f":[]},"DOS":{"e":["pc","dos","zip"],"a":["DOS"],"f":[]},"DOOM":{"e":["wad","zip"],"a":["WAD"],"f":[]},"ScummVM":{"e":["scummvm","zip"],"a":["SCUMM"],"f":[]},"Atomiswave":{"e":["zip"],"a":["Atomiswave"],"f":[]}};
